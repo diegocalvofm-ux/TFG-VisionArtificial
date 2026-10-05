@@ -1,0 +1,14 @@
+views:
+  - type: table
+    name: Vista
+    filters:
+      and:
+        - file.folder == "experimentos"
+    order:
+      - file.name
+      - fecha
+      - estado
+      - modelo
+      - metrica_principal
+      - valor
+      - entorno
