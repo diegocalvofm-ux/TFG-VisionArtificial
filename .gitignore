@@ -224,12 +224,18 @@ data/
 *.jpg
 *.jpeg
 *.png
+*.webp
+*.bmp
+*.tif
+*.tiff
 
 # Modelos y resultados de entrenamiento
 runs/
 *.pt
 *.pth
 *.onnx
+*.ckpt
+*.safetensors
 
 # Secretos
 .env

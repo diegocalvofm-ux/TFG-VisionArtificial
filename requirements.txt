@@ -1,0 +1,7 @@
+# Dependencias del proyecto (sin versiones fijadas).
+# PyTorch (torch y torchvision) se instala aparte:
+#   - En local: versión para CPU, siguiendo las instrucciones de https://pytorch.org
+#   - En Colab: ya viene instalado.
+numpy
+opencv-python
+matplotlib
