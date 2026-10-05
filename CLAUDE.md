@@ -23,3 +23,8 @@
 - Código en Python, comentarios y documentación en español.
 - Explicar cada cambio importante: el autor debe poder defender el código.
 - Antes de entrenar en Colab, probar en local con un subconjunto pequeño en CPU.
+
+## Experimentos
+- Cada experimento es una nota docs/experimentos/expNNN.md creada desde docs/plantillas/experimento.md.
+- Al terminar un entrenamiento en Colab hay que rellenar commit, entorno, versiones de Python y PyTorch, métrica y resultado.
+- No inventar nunca métricas ni resultados: si un dato no está, se deja vacío.

@@ -240,3 +240,4 @@ runs/
 # Secretos
 .env
 kaggle.json
+docs/.obsidian/
