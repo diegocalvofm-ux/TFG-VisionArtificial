@@ -218,3 +218,19 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Datos e imágenes: nunca al repositorio
+data/
+*.jpg
+*.jpeg
+*.png
+
+# Modelos y resultados de entrenamiento
+runs/
+*.pt
+*.pth
+*.onnx
+
+# Secretos
+.env
+kaggle.json
