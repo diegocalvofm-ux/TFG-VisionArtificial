@@ -1,0 +1,3 @@
+# Detector genérico opcional (OWL-ViT), sin versiones fijadas.
+# Necesita PyTorch, que se instala aparte (ver requirements.txt).
+transformers

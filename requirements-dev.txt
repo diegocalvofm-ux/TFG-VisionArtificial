@@ -1,0 +1,3 @@
+# Herramientas de desarrollo: pruebas y linter (sin versiones fijadas).
+pytest
+ruff

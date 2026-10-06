@@ -1,0 +1,7 @@
+# Configuración de la versión 0 (sin entrenamiento, modelos genéricos).
+detector: whole          # whole (imagen completa) | owlvit (zero-shot, opcional)
+
+# Solo se usa con el detector owlvit.
+owlvit:
+  umbral: 0.1            # puntuación mínima para aceptar una caja; punto de partida a ajustar
+  consulta: "a photo of a lettuce"

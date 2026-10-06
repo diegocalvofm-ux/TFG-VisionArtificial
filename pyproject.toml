@@ -1,0 +1,22 @@
+# Configuración de herramientas (pytest y ruff). No define un paquete instalable.
+
+[tool.pytest.ini_options]
+# Permite hacer "from src.xxx import ..." en las pruebas sin instalar el proyecto.
+pythonpath = ["."]
+testpaths = ["tests"]
+# Las pruebas lentas (p. ej. las que descargan un modelo) se saltan por defecto:
+#   pytest -m slow    -> ejecuta solo las lentas
+addopts = "-m 'not slow' --strict-markers --import-mode=importlib"
+markers = [
+    "slow: prueba lenta (descarga modelos o necesita red); se salta por defecto",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Los notebooks solo orquestan en Colab (llevan "!pip", "%cd"...); la lógica está en src/.
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+# E: estilo (incluye longitud de línea), F: errores, I: orden de imports.
+select = ["E", "F", "I"]

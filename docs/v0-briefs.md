@@ -1,0 +1,194 @@
+# Versión 0: briefs y prompts para Claude Code
+
+Guardar este archivo en `docs/v0-briefs.md` del repositorio. Claude Code lo lee al empezar cada tarea, así que los prompts son cortos y el detalle vive aquí.
+
+## Qué es la versión 0
+
+Un programa que se ejecuta de extremo a extremo con modelos genéricos y sin datos propios. Valida la estructura del código, las pruebas y la medición de consumo. No evalúa calidad real: todavía no hay un modelo entrenado.
+
+**Prueba de la versión 0 (criterio de hecho)**
+
+1. `pytest -q` pasa y `ruff check .` no da avisos.
+2. `python -m src.pipeline.run --input data/v0_test --out runs/v0_local --detector whole` genera, para cada imagen, un JSON y una imagen anotada.
+3. Lo mismo con `--detector owlvit` en el portátil (CPU) y en Colab (T4).
+4. Cada ejecución guarda tiempo por imagen, memoria y versiones de Python y PyTorch.
+5. La nota `exp001` de Obsidian está completa, con el commit usado y los resultados medidos.
+6. El repositorio lleva la etiqueta `v0`.
+
+**Lo que la v0 no hace.** No detecta defectos ni emite ACCEPT: sin modelo de calidad, los seis grupos salen NO_VISIBLE y la salida global es REVIEW. No hay métricas de precisión. El detector genérico puede fallar con lechugas, y eso es esperable.
+
+## Decisiones previas, con su valor por defecto
+
+| Tema | Valor en la v0 | Pendiente de |
+| --- | --- | --- |
+| Detector | Imagen completa como una sola lechuga, y OWL-ViT opcional (Apache-2.0, zero-shot, [ficha](https://huggingface.co/google/owlvit-base-patch32)). COCO no tiene clase lechuga | Elegir el detector real en la v1 |
+| Licencia del repositorio | Sin definir. La v0 no usa Ultralytics | Decisión AGPL-3.0 o Apache-2.0 |
+| Salida global por etiqueta | Solo las 6 explícitas del manual. Las demás, REVIEW y marcadas como provisionales | Validación del tutor y el experto |
+| Etiquetas YELLOW_BROWN | Dos valores: `YELLOW_BROWN_LIGHT` y `YELLOW_BROWN_MAJOR` | Confirmar con el tutor |
+| Varias etiquetas por grupo | Un valor por grupo | Confirmar si hace falta multietiqueta |
+| Imágenes de prueba | 3 a 5 fotos propias de una lechuga del súper (cenital, lateral y base), en `data/v0_test/`, sin subir a Git | Sirve también de captura piloto |
+
+## Estructura objetivo
+
+```text
+src/
+  config.py
+  data/        schema.py, split.py
+  evaluation/  aggregate.py
+  pipeline/    types.py, run.py, draw.py,
+               detectors/ (whole.py, owlvit.py), assessors/ (null.py)
+  utils/       env.py, profiling.py
+configs/       v0.yaml, salida_global.yaml
+tests/         una carpeta de pruebas por módulo
+```
+
+## Reglas comunes a todas las tareas
+
+- Una tarea por sesión: `/clear` al empezar y una rama `v0/<tarea>`.
+- Modo plan primero (`Shift + Tab`): propone archivos, funciones y pruebas, sin editar, y espera la aprobación.
+- En lógica determinista, primero las pruebas y después el código.
+- Al terminar: pytest y ruff con su salida pegada, y la lista de archivos creados o modificados.
+- No hace commit. El autor revisa con `git status` y `git --no-pager diff`.
+- No añade dependencias sin pedirlo. No inventa datos, métricas ni versiones. No guarda imágenes ni pesos en el repositorio.
+- Comentarios y docstrings en español, y cada función no trivial con una explicación en lenguaje llano.
+
+**Prompt base** (se cambia solo el número de tarea):
+
+```text
+Lee CLAUDE.md y docs/v0-briefs.md. Trabaja solo en la TAREA N y aplica las reglas comunes del documento.
+Entra primero en modo plan: propón archivos, funciones y pruebas, sin editar nada, y espera mi aprobación.
+```
+
+---
+
+## TAREA 0: pruebas, linter y configuración
+
+**Rama:** `v0/setup`
+
+**Entrega**
+- `pyproject.toml` con la configuración de pytest (`pythonpath = ["."]`, `testpaths = ["tests"]`, marca `slow` excluida por defecto) y de ruff (longitud de línea 100).
+- `requirements.txt` con numpy, opencv-python, matplotlib, pandas, pyyaml y psutil. `requirements-dev.txt` con pytest y ruff. `requirements-detector.txt` con transformers. Sin `torch`.
+- `src/config.py`: `load_config(ruta)` lee un YAML y devuelve un diccionario, con error claro si falta el archivo.
+- `configs/v0.yaml` con el detector por defecto, el umbral y la consulta de texto.
+- Una prueba mínima de `load_config`.
+- Añadir a `CLAUDE.md` una sección "Desarrollo" con las reglas comunes.
+
+**Criterio:** `pytest -q` pasa, `ruff check .` limpio y `python -c "from src.config import load_config"` funciona.
+
+## TAREA 1: esquema de metadatos y partición por lechuga
+
+**Rama:** `v0/datos`
+
+**Entrega**
+- `src/data/schema.py` con los seis grupos y sus valores permitidos, más `NO_VISIBLE`:
+  - `corte`: CUT_OK, STEM_TOO_LONG, UNCLEAN_CUT, ROOT_REMAINS
+  - `recorte`: TRIM_OK, UNDER_TRIMMED, OVER_TRIMMED
+  - `hojas_ext`: OUTER_LEAVES_OK, OUTER_DAMAGE_LIGHT, OUTER_DAMAGE_MAJOR
+  - `color`: COLOR_FRESH_OK, YELLOW_BROWN_LIGHT, YELLOW_BROWN_MAJOR, WILTING
+  - `daño_fisico`: PHYSICAL_OK, TORN_LEAF, BRUISE_CRUSH
+  - `daño_bio`: BIO_OK, ROT_DECAY, VISIBLE_PEST, PEST_DAMAGE, DISEASE_VISIBLE
+- `validate_metadata(df)`: devuelve la lista de errores, sin lanzar excepción. Comprueba columnas presentes, valores válidos, `image_id` único y `fuente` y `licencia` no vacías.
+- `src/data/split.py`: `group_split(df, group_col="lechuga_id", fracciones=(0.7, 0.15, 0.15), seed=42)`, determinista. Las filas sin `lechuga_id` forman cada una su propio grupo y emiten un aviso, porque en datasets públicos no se puede garantizar que no haya fugas.
+- Columnas de `metadata.csv`: `image_id, fuente, licencia, etiqueta_original, lechuga_id, vista, sesion, corte, recorte, hojas_ext, color, daño_fisico, daño_bio, salida_global`.
+
+**Pruebas (primero):** ninguna lechuga en dos particiones, mismo resultado con la misma semilla, proporciones aproximadas, valor inválido detectado, licencia vacía detectada, id vacío con aviso.
+
+## TAREA 2: regla de agregación de la salida global
+
+**Rama:** `v0/agregacion`
+
+**Entrega**
+- `configs/salida_global.yaml`: tabla etiqueta → nivel. Etiquetas OK → ACCEPT. Explícitas del manual: ROOT_REMAINS y ROT_DECAY → NON-CONFORMING; OUTER_DAMAGE_LIGHT, STEM_TOO_LONG y TORN_LEAF → REVIEW. Todas las demás con valor `PENDIENTE`, incluida VISIBLE_PEST (el manual es ambiguo).
+- `src/evaluation/aggregate.py` con `aggregate(grupos, tabla)`, que devuelve el nivel y la lista de etiquetas provisionales.
+
+**Reglas**
+1. Cada etiqueta visible da su nivel. Una etiqueta `PENDIENTE` cuenta como REVIEW y se anota como provisional.
+2. El resultado es el peor nivel de los grupos visibles.
+3. ACCEPT solo si los seis grupos son visibles. Si alguno es NO_VISIBLE, el resultado no es mejor que REVIEW. El texto "máximo REVIEW" del manual se lee así y hay que confirmarlo con el tutor.
+4. Sin ningún grupo visible, el resultado es REVIEW.
+5. Una etiqueta desconocida lanza `ValueError` con un mensaje claro.
+
+**Pruebas (primero):** todo OK da ACCEPT; un NO_VISIBLE da REVIEW; ROOT_REMAINS da NON-CONFORMING aunque el resto sea NO_VISIBLE; ningún grupo visible da REVIEW; etiqueta pendiente da REVIEW provisional; etiqueta desconocida lanza error; sustituir una etiqueta por otra peor nunca mejora el resultado.
+
+## TAREA 3: pipeline de extremo a extremo
+
+**Rama:** `v0/pipeline`
+
+**Entrega**
+- `src/pipeline/types.py`: `Detection(box, score, label)`, protocolos `Detector` y `Assessor`.
+- `detectors/whole.py`: devuelve la imagen completa como una sola lechuga con puntuación 1.0.
+- `assessors/null.py`: devuelve los seis grupos como NO_VISIBLE.
+- `src/pipeline/run.py`: `python -m src.pipeline.run --input DIR --out DIR --detector whole|owlvit`. Por cada imagen genera `<nombre>.json` y `<nombre>_anotada.jpg`.
+- `src/pipeline/draw.py`: dibuja la caja y el nivel con OpenCV.
+
+**Estructura del JSON** (los valores son de ejemplo, no resultados)
+
+```json
+{
+  "image": "foto01.jpg",
+  "lettuces": [
+    {"box": [0, 0, 640, 480], "score": 1.0, "groups": {"corte": "NO_VISIBLE"}, "global": "REVIEW", "provisional_labels": []}
+  ],
+  "timing_ms": {"detect": 0.0, "assess": 0.0, "total": 0.0},
+  "env": {"python": "...", "torch": "...", "device": "cpu"}
+}
+```
+
+**Criterios:** una imagen sin detecciones da `"lettuces": []` sin fallar; una imagen ilegible se salta con un aviso; las pruebas usan imágenes sintéticas creadas con numpy, nunca imágenes reales en el repositorio.
+
+## TAREA 4: detector genérico opcional (OWL-ViT)
+
+**Rama:** `v0/owlvit`
+
+**Entrega**
+- `detectors/owlvit.py` con `OwlViTProcessor` y `OwlViTForObjectDetection` de `transformers`, modelo `google/owlvit-base-patch32`. Importación perezosa, para que `transformers` siga siendo opcional.
+- Consulta de texto y umbral desde `configs/v0.yaml`. Empezar con una plantilla como `a photo of a lettuce`, según recomienda la ficha del modelo.
+- Devuelve las cajas por encima del umbral, de mayor a menor puntuación.
+- Una prueba marcada `slow`, que se salta por defecto, con una imagen sintética.
+
+**Avisos:** la primera ejecución descarga el modelo desde Hugging Face (tamaño por comprobar) y requiere conexión. Es un modelo genérico: puede dar falsos positivos y no detectar lechugas. En la v0 solo se mide, no se mejora.
+
+## TAREA 5: medición de entorno y consumo
+
+**Rama:** `v0/medicion`
+
+**Entrega**
+- `src/utils/env.py`: devuelve versiones de Python, PyTorch (si está) y OpenCV, el sistema operativo y el dispositivo.
+- `src/utils/profiling.py`: tiempo por imagen (mediana de N repeticiones tras una de calentamiento) y memoria residente con `psutil`. Se integra en el JSON del pipeline.
+
+**Pruebas:** que `env` devuelva las claves esperadas y que la mediana se calcule bien con tiempos simulados.
+
+## TAREA 6: notebook de Colab
+
+**Rama:** `v0/colab`
+
+**Entrega:** `notebooks/01_v0_colab.ipynb`, que solo orquesta. Monta Drive, clona el repositorio, instala `requirements.txt` y `requirements-detector.txt`, imprime `git rev-parse --short HEAD`, `sys.version` y `torch.__version__`, ejecuta el pipeline con los dos detectores sobre las imágenes de Drive y guarda los resultados en `MyDrive/tfg-lechugas/runs/v0`.
+
+**Antes de hacer commit:** borrar las salidas (*Clear All Outputs*) y comprobar que no queda ninguna ruta ni dato personal.
+
+---
+
+## Nota exp001 para Obsidian
+
+Crear `docs/experimentos/exp001.md` con la plantilla y esto:
+
+- `estado: planificado` → `hecho` al terminar. `objetivo: validar el pipeline de la v0`. `dataset: fotos propias de prueba, sin etiquetas`. `modelo: OWL-ViT base patch32 y detector de imagen completa`.
+- Apartado Resultados, una fila por ejecución:
+
+| Detector | Dispositivo | Imágenes | Mediana (ms) | Memoria (MB) | Observación |
+| --- | --- | --- | --- | --- | --- |
+| whole | CPU local | | | | |
+| owlvit | CPU local | | | | |
+| owlvit | Colab T4 | | | | |
+
+Rellenar solo con datos medidos. Si algo no se ejecuta, se deja vacío.
+
+## Orden de trabajo y cierre
+
+1. Tarea 0, luego 1 y 2 (se pueden hacer en cualquier orden), luego 3, 4, 5 y 6.
+2. Tras cada tarea: revisar el diff, pasar pytest y ruff, hacer commit en la rama y fusionar en `main` (`git switch main`, `git merge v0/<tarea>`, `git push`).
+3. Al terminar la prueba de la v0: completar `exp001`, actualizar el Estado del TFG, anotar el uso de IA en `docs/uso-ia.md` y ejecutar `git tag v0` y `git push --tags`.
+
+## Fuera del alcance de la v0
+
+Datos propios, entrenamiento, métricas de calidad, validación de la tabla de salida global, elección del modelo final y licencia del repositorio.
