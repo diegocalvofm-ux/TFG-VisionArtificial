@@ -1,0 +1,38 @@
+# Tabla de salida global por etiqueta: grupo -> etiqueta -> nivel.
+#
+# Niveles: ACCEPT, REVIEW, NON-CONFORMING o PENDIENTE.
+#   - PENDIENTE: el manual no fija el nivel (o es ambiguo) y falta la validación del tutor y
+#     del experto. Al agregar cuenta como REVIEW y la etiqueta se marca como provisional.
+#   - Solo llevan nivel las etiquetas explícitas del manual. NO rellenar las PENDIENTE con
+#     criterios de OECD, USDA ni otra fuente mientras no estén validados.
+#   - NO_VISIBLE no aparece aquí: vale en cualquier grupo y lo trata la regla de agregación.
+# Las etiquetas de cada grupo deben coincidir exactamente con GROUPS (src/data/schema.py);
+# una prueba lo comprueba.
+corte:
+  CUT_OK: ACCEPT
+  STEM_TOO_LONG: REVIEW
+  UNCLEAN_CUT: PENDIENTE
+  ROOT_REMAINS: NON-CONFORMING
+recorte:
+  TRIM_OK: ACCEPT
+  UNDER_TRIMMED: PENDIENTE
+  OVER_TRIMMED: PENDIENTE
+hojas_ext:
+  OUTER_LEAVES_OK: ACCEPT
+  OUTER_DAMAGE_LIGHT: REVIEW
+  OUTER_DAMAGE_MAJOR: PENDIENTE
+color:
+  COLOR_FRESH_OK: ACCEPT
+  YELLOW_BROWN_LIGHT: PENDIENTE
+  YELLOW_BROWN_MAJOR: PENDIENTE
+  WILTING: PENDIENTE
+daño_fisico:
+  PHYSICAL_OK: ACCEPT
+  TORN_LEAF: REVIEW
+  BRUISE_CRUSH: PENDIENTE
+daño_bio:
+  BIO_OK: ACCEPT
+  ROT_DECAY: NON-CONFORMING
+  VISIBLE_PEST: PENDIENTE  # el manual es ambiguo con esta etiqueta
+  PEST_DAMAGE: PENDIENTE
+  DISEASE_VISIBLE: PENDIENTE
