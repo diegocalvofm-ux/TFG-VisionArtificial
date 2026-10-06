@@ -220,7 +220,8 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Datos e imágenes: nunca al repositorio
-data/
+# (anclado a la raíz: así no ignora también src/data/ ni tests/data/)
+/data/
 *.jpg
 *.jpeg
 *.png
