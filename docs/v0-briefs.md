@@ -114,12 +114,25 @@ Entra primero en modo plan: propón archivos, funciones y pruebas, sin editar na
 
 **Rama:** `v0/pipeline`
 
-**Entrega**
-- `src/pipeline/types.py`: `Detection(box, score, label)`, protocolos `Detector` y `Assessor`.
-- `detectors/whole.py`: devuelve la imagen completa como una sola lechuga con puntuación 1.0.
-- `assessors/null.py`: devuelve los seis grupos como NO_VISIBLE.
-- `src/pipeline/run.py`: `python -m src.pipeline.run --input DIR --out DIR --detector whole|owlvit`. Por cada imagen genera `<nombre>.json` y `<nombre>_anotada.jpg`.
-- `src/pipeline/draw.py`: dibuja la caja y el nivel con OpenCV.
+**Entrega** (implementada)
+- `src/pipeline/types.py`: `Detection(box, score, label="lettuce")` (dataclass inmutable; `box` = `(x1, y1, x2, y2)` en píxeles) y los protocolos `Detector.detect(imagen)` y `Assessor.assess(imagen, deteccion)`. Las imágenes son arrays BGR de OpenCV.
+- `detectors/whole.py`: `WholeDetector` devuelve la imagen completa, `(0, 0, ancho, alto)`, como una sola lechuga con puntuación 1.0.
+- `detectors/__init__.py`: **registro de detectores** (`DETECTORS`, `crear_detector(nombre, cfg)`, `nombres_detectores()`). Un nombre desconocido lanza `ValueError` que lista los disponibles. Hoy solo existe `whole`; OWL-ViT se añade en la tarea 4 registrando su fábrica, que recibe la configuración de `configs/v0.yaml`.
+- `assessors/null.py`: `NullAssessor` devuelve los seis grupos de `GROUPS` como `NO_VISIBLE`.
+- `src/pipeline/imagenes.py`: `leer_imagen` y `guardar_imagen` con `cv2.imdecode` + `np.fromfile` y `cv2.imencode` + `tofile`, para que funcionen rutas con tildes y eñes en Windows. Extensiones admitidas: jpg, jpeg, png, webp y bmp.
+- `src/pipeline/draw.py`: `dibujar` devuelve una copia con la caja y el nivel (más la puntuación) de cada lechuga, con color por nivel (verde, naranja, rojo). El texto se pasa a ASCII porque las fuentes de OpenCV no pintan tildes.
+- `src/pipeline/run.py`: `python -m src.pipeline.run --input DIR [--out DIR] [--detector NOMBRE] [--config YAML] [--tabla YAML]`. Por cada imagen genera `<nombre>.json` y `<nombre>_anotada.jpg`. Reutiliza `load_config`, `GROUPS`/`NO_VISIBLE` de `schema.py` y `aggregate` con `configs/salida_global.yaml`; no duplica sus listas ni su lógica.
+  - `main(argv)` se puede llamar desde las pruebas sin `subprocess`, y devuelve el código de salida: `0` si se procesó alguna imagen, `1` si ninguna y `2` si hay un error de uso (carpeta o configuración inexistentes, detector desconocido), con el motivo por la salida de errores.
+  - Valores por defecto (calculados desde la raíz del repositorio, no desde la carpeta de trabajo): salida en `runs/v0` (ya ignorada por `.gitignore`), `configs/v0.yaml` y `configs/salida_global.yaml`. Si no se indica `--detector`, se usa el de `v0.yaml`.
+  - Recorre la carpeta por orden alfabético, sin entrar en subcarpetas. Una extensión no admitida, una imagen ilegible o un nombre repetido con otra extensión (`foto.jpg` y `foto.png`) se saltan con un `UserWarning` y el proceso continúa.
+
+**Cambios sobre el brief**
+- `--detector` acepta los nombres del registro (hoy solo `whole`), no `whole|owlvit` fijos.
+- `env` del JSON lleva solo `python` y `opencv`; la tarea 5 lo amplía con PyTorch y el dispositivo.
+- El JSON se escribe en UTF-8 con `ensure_ascii=False` porque hay claves con eñe (`daño_fisico`, `daño_bio`).
+- `label` de `Detection` no se vuelca al JSON (no figura en el esquema).
+- Los tiempos son milisegundos con `time.perf_counter`, sin redondear. `total` cubre detección y evaluación, no la lectura ni la escritura de archivos.
+- Se añadieron `--config`, `--tabla`, los códigos de salida y el aviso por nombre repetido; no estaban en el brief.
 
 **Estructura del JSON** (los valores son de ejemplo, no resultados)
 
@@ -130,9 +143,11 @@ Entra primero en modo plan: propón archivos, funciones y pruebas, sin editar na
     {"box": [0, 0, 640, 480], "score": 1.0, "groups": {"corte": "NO_VISIBLE"}, "global": "REVIEW", "provisional_labels": []}
   ],
   "timing_ms": {"detect": 0.0, "assess": 0.0, "total": 0.0},
-  "env": {"python": "...", "torch": "...", "device": "cpu"}
+  "env": {"python": "...", "opencv": "..."}
 }
 ```
+
+En `groups` aparecen los seis grupos, en el orden de `GROUPS`; el ejemplo muestra solo uno.
 
 **Criterios:** una imagen sin detecciones da `"lettuces": []` sin fallar; una imagen ilegible se salta con un aviso; las pruebas usan imágenes sintéticas creadas con numpy, nunca imágenes reales en el repositorio.
 
