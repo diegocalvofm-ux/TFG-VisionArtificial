@@ -1,7 +1,12 @@
 # Configuración de la versión 0 (sin entrenamiento, modelos genéricos).
 detector: whole          # whole (imagen completa) | owlvit (zero-shot, opcional)
 
-# Solo se usa con el detector owlvit.
+# Solo se usa con el detector owlvit. --umbral y --consulta de run.py los sobrescriben
+# para una ejecución, sin editar este archivo.
 owlvit:
-  umbral: 0.1            # puntuación mínima para aceptar una caja; punto de partida a ajustar
+  modelo: google/owlvit-base-patch32
   consulta: "a photo of a lettuce"
+  umbral: 0.1            # solo se conservan las cajas con puntuación MAYOR; punto de partida a ajustar
+  max_detecciones: 10    # tope de cajas por imagen, aplicado tras el NMS
+  nms_iou: 0.5           # se elimina la caja que se solape más que esto (IoU) con una mejor
+  dispositivo: auto      # auto (cuda si hay GPU, si no cpu) | cpu | cuda

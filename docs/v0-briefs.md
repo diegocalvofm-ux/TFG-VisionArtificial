@@ -155,13 +155,29 @@ En `groups` aparecen los seis grupos, en el orden de `GROUPS`; el ejemplo muestr
 
 **Rama:** `v0/owlvit`
 
-**Entrega**
-- `detectors/owlvit.py` con `OwlViTProcessor` y `OwlViTForObjectDetection` de `transformers`, modelo `google/owlvit-base-patch32`. Importación perezosa, para que `transformers` siga siendo opcional.
-- Consulta de texto y umbral desde `configs/v0.yaml`. Empezar con una plantilla como `a photo of a lettuce`, según recomienda la ficha del modelo.
-- Devuelve las cajas por encima del umbral, de mayor a menor puntuación.
-- Una prueba marcada `slow`, que se salta por defecto, con una imagen sintética.
+**Entrega** (implementada)
+- `src/pipeline/detectors/owlvit.py`: `OwlViTDetector` con `OwlViTProcessor` y `OwlViTForObjectDetection` de `transformers`, modelo `google/owlvit-base-patch32`, registrado en el registro de detectores con el nombre `owlvit` (`crear_owlvit` es su fábrica).
+  - **Importación perezosa:** `transformers` y `torch` solo se importan al crear el detector. Sin ellos, el error dice `pip install -r requirements-detector.txt`. En `main` ese error y los de red (`OSError`) acaban con código 2 y el motivo por la salida de errores.
+  - **El modelo se carga una sola vez**, al crear el detector, no por imagen. El tiempo de carga queda en `tiempo_carga_s`, separado de la inferencia (que mide el pipeline en `timing_ms.detect`), y `run.py` lo muestra como `Carga del modelo: X s`. No se añade al JSON.
+  - **Dispositivo:** `auto` usa `cuda` si hay GPU y `cpu` si no; `cuda` sin GPU es un error, no cae a CPU en silencio.
+  - **Postprocesado de la librería:** se usa `OwlViTProcessor.post_process_grounded_object_detection(outputs, threshold, target_sizes)`, comprobado en `transformers` 5.19.0. En esa versión el procesador ya no tiene `post_process_object_detection` (sigue en `OwlViTImageProcessor`). `target_sizes` se pasa como `[(alto, ancho)]` de la imagen original; la librería devuelve las cajas en píxeles y puede devolver cajas fuera de la imagen.
+  - **Postprocesado propio** (`postprocesar`, en numpy): descarta valores no finitos y puntuaciones que no superan el umbral → recorta a la imagen y redondea a píxeles → descarta cajas degeneradas (sin ancho o alto, también las que el recorte deja sin área) → NMS → ordena de mayor a menor puntuación → aplica `max_detecciones`. El tope va después del NMS para que las cajas repetidas no ocupen sitio.
+- `src/pipeline/nms.py`: `nms(cajas, puntuaciones, iou_umbral)`, NMS voraz por IoU en numpy, sin dependencias nuevas. Suprime solo si el IoU es **mayor** que el umbral. Se comprueba contra `torchvision.ops.nms` en las pruebas (si torchvision está instalado).
+- `configs/v0.yaml`, bloque `owlvit`: `modelo`, `consulta` (`a photo of a lettuce`), `umbral` (0.1), `max_detecciones` (10), `nms_iou` (0.5) y `dispositivo` (`auto`). Todos son obligatorios: el YAML es la única fuente de valores y el código no tiene valores por defecto escondidos. `max_detecciones` es un tope elegido para la v0, no un resultado.
+- `run.py`: `--umbral` y `--consulta` sustituyen esos valores en una ejecución sin editar el YAML (solo valen para `owlvit`; con otro detector se ignoran con un aviso).
+- Una prueba `@pytest.mark.slow` con el modelo real y una imagen sintética: solo comprueba que se ejecuta y que las cajas son válidas, no que encuentre una lechuga. El resto de pruebas usan un procesador y un modelo falsos y no descargan nada.
 
-**Avisos:** la primera ejecución descarga el modelo desde Hugging Face (tamaño por comprobar) y requiere conexión. Es un modelo genérico: puede dar falsos positivos y no detectar lechugas. En la v0 solo se mide, no se mejora.
+**Cambios sobre el brief**
+- Umbral estricto: se conservan las cajas con puntuación **mayor** que el umbral, igual que hace la librería ("por encima del umbral").
+- Se añadieron `modelo`, `max_detecciones`, `nms_iou` y `dispositivo` a la configuración, el NMS y las opciones de línea de comandos, que no figuraban en el brief.
+
+**Avisos:** la primera ejecución descarga el modelo desde Hugging Face y requiere conexión. Es un modelo genérico: puede dar falsos positivos y no detectar lechugas. En la v0 solo se mide, no se mejora.
+
+**Datos medidos en esta tarea** (portátil, CPU, `transformers` 5.19.0, PyTorch 2.14.1+cpu; orientativos, la medición rigurosa es la tarea 5):
+- Tamaño del modelo: `model.safetensors` 612 983 940 bytes; la caché de Hugging Face del modelo ocupa 587 MiB en disco.
+- Carga con la caché ya descargada: 11,03 s y 13,46 s en dos ejecuciones. La prueba `slow` completa, con la primera descarga, tardó 40 s.
+- Inferencia con una imagen sintética de 480×640: 511 ms la primera llamada y entre 349 y 362 ms las cuatro siguientes. Sin detecciones sobre esa imagen sintética.
+- No se ha probado con fotos reales de lechuga: no hay ninguna en el repositorio.
 
 ## TAREA 5: medición de entorno y consumo
 

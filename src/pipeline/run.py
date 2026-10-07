@@ -61,6 +61,17 @@ def crear_parser() -> argparse.ArgumentParser:
         default=RAIZ / "configs" / "salida_global.yaml",
         help="tabla de salida global (YAML)",
     )
+    parser.add_argument(
+        "--umbral",
+        type=float,
+        default=None,
+        help="solo owlvit: umbral de puntuación; sustituye al de la configuración",
+    )
+    parser.add_argument(
+        "--consulta",
+        default=None,
+        help="solo owlvit: texto de búsqueda; sustituye al de la configuración",
+    )
     return parser
 
 
@@ -171,12 +182,35 @@ def procesar_carpeta(
     return procesadas, saltadas
 
 
+def _aplicar_opciones(cfg: Mapping, detector: str, argumentos: argparse.Namespace) -> Mapping:
+    """Aplica ``--umbral`` y ``--consulta`` sobre una copia de la configuración.
+
+    En lenguaje llano: sirven para probar otros valores sin editar ``configs/v0.yaml``. La
+    configuración original no se toca. Solo valen para ``owlvit``; con otro detector se
+    avisa de que se ignoran.
+    """
+    opciones = {"umbral": argumentos.umbral, "consulta": argumentos.consulta}
+    opciones = {clave: valor for clave, valor in opciones.items() if valor is not None}
+    if not opciones:
+        return cfg
+    if detector != "owlvit":
+        pedidas = ", ".join(f"--{clave}" for clave in opciones)
+        warnings.warn(
+            f"Se ignora {pedidas}: solo se aplica al detector 'owlvit' (se usa '{detector}')",
+            UserWarning,
+            stacklevel=2,
+        )
+        return cfg
+    return {**cfg, "owlvit": {**(cfg.get("owlvit") or {}), **opciones}}
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Punto de entrada de la línea de comandos. Devuelve el código de salida.
 
     ``0``: se procesó al menos una imagen. ``1``: no se procesó ninguna. ``2``: error de
-    uso (carpeta o configuración inexistentes, detector desconocido...), con el motivo por
-    la salida de errores. Recibe ``argv`` para poder probarlo sin lanzar otro proceso.
+    uso (carpeta o configuración inexistentes, valores inválidos, detector desconocido,
+    ``transformers`` sin instalar, fallo al descargar el modelo...), con el motivo por la
+    salida de errores. Recibe ``argv`` para poder probarlo sin lanzar otro proceso.
     """
     argumentos = crear_parser().parse_args(argv)
 
@@ -189,11 +223,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         nombre = argumentos.detector or cfg.get("detector")
         if not nombre:
             raise ValueError("no se indicó detector ni hay 'detector' en la configuración")
+        cfg = _aplicar_opciones(cfg, nombre, argumentos)
         detector = crear_detector(nombre, cfg)
-    except (OSError, ValueError, yaml.YAMLError) as error:
+    except (OSError, ImportError, ValueError, yaml.YAMLError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 2
 
+    tiempo_carga = getattr(detector, "tiempo_carga_s", None)  # solo los detectores con modelo
+    if tiempo_carga is not None:
+        print(f"Carga del modelo: {tiempo_carga:.2f} s")
     procesadas, saltadas = procesar_carpeta(
         argumentos.input, argumentos.out, detector, NullAssessor(), tabla
     )

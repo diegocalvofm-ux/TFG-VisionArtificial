@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Mapping
 
+from src.pipeline.detectors.owlvit import crear_owlvit
 from src.pipeline.detectors.whole import WholeDetector
 from src.pipeline.types import Detector
 
@@ -12,7 +13,11 @@ def _crear_whole(cfg: Mapping) -> Detector:
 
 # Nombre -> fábrica. Cada fábrica recibe la configuración (configs/v0.yaml) para poder
 # leer sus parámetros; así se añaden detectores nuevos sin cambiar esta interfaz.
-DETECTORS: dict[str, Callable[[Mapping], Detector]] = {"whole": _crear_whole}
+# "owlvit" solo importa transformers cuando se crea, así que registrarlo no lo hace obligatorio.
+DETECTORS: dict[str, Callable[[Mapping], Detector]] = {
+    "whole": _crear_whole,
+    "owlvit": crear_owlvit,
+}
 
 
 def nombres_detectores() -> list[str]:
