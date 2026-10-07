@@ -39,3 +39,5 @@ Reglas comunes a todas las tareas (el detalle de cada tarea está en docs/v0-bri
 - Cada experimento es una nota docs/experimentos/expNNN.md creada desde docs/plantillas/experimento.md.
 - Al terminar un entrenamiento en Colab hay que rellenar commit, entorno, versiones de Python y PyTorch, métrica y resultado.
 - No inventar nunca métricas ni resultados: si un dato no está, se deja vacío.
+
+- Al cerrar cada tarea, antes del resumen final: actualiza solo la sección de esa tarea en docs/v0-briefs.md para que describa lo implementado, incluidos los cambios sobre el brief, y añade una fila a docs/uso-ia.md (fecha del sistema, Claude Code, descripción de la tarea, partes tocadas) con la columna "revisado por el autor" en "No". No toques nada más de esos archivos.
