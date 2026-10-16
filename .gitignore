@@ -242,3 +242,4 @@ runs/
 .env
 kaggle.json
 docs/.obsidian/
+.claude/settings.local.json
