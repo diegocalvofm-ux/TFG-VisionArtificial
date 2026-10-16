@@ -207,9 +207,39 @@ En `groups` aparecen los seis grupos, en el orden de `GROUPS`; el ejemplo muestr
 
 **Rama:** `v0/colab`
 
-**Entrega:** `notebooks/01_v0_colab.ipynb`, que solo orquesta. Monta Drive, clona el repositorio, instala `requirements.txt` y `requirements-detector.txt`, imprime `git rev-parse --short HEAD`, `sys.version` y `torch.__version__`, ejecuta el pipeline con los dos detectores sobre las imágenes de Drive y guarda los resultados en `MyDrive/tfg-lechugas/runs/v0`.
+**Entrega** (implementada)
+- `notebooks/01_v0_colab.ipynb` (nbformat 4.5, kernel `python3`, metadatos `accelerator: GPU` y `gpuType: T4`). Solo orquesta: no importa nada de `src/`, todo lo que hace es lanzar `python -m src.pipeline.run`. Es Python puro, sin `!` ni `%`, para que cada celda se pueda comprobar con `ast.parse`. Se entrega sin salidas ni `execution_count`.
+- Celdas de código, en orden:
+  - **a) Parámetros:** `REPO_URL`, `COMMIT = "main"`, `CARPETA_DRIVE = "/content/drive/MyDrive/tfg-lechugas"` e `IMAGENES = CARPETA_DRIVE + "/data/v0_test"`; derivados `REPO = "/content/TFG-VisionArtificial"`, `RUNS = "/content/runs"` y `PYTHON`. Define `ejecutar(comando, cwd=None, comprobar=True)`: lanza el comando, enseña su salida en directo y, si falla, lanza `RuntimeError` para que el notebook se pare en esa celda.
+  - **b) Drive:** `drive.mount`; comprueba que `IMAGENES` existe y tiene al menos una imagen (`.jpg`, `.jpeg`, `.png`, `.webp`, `.bmp`, sin distinguir mayúsculas; una carpeta con nombre de foto no cuenta). Si no, para con `FileNotFoundError` y dice que hay que subir las fotos a esa carpeta.
+  - **c) Repositorio:** `git clone` (o `git fetch --all --tags` si ya está), `git checkout COMMIT`, `git pull --ff-only` solo si `COMMIT` es una rama, `os.chdir` al repo e impresión de `git rev-parse --short HEAD`.
+  - **d) Dependencias:** `pip install -q -r requirements.txt -r requirements-detector.txt`, sin `torch` ni `torchvision` (Colab ya los trae).
+  - **e) Entorno:** imprime `sys.version`, `torch.__version__`, si hay CUDA, el nombre de la GPU y `transformers.__version__`. Son los datos que hay que dar al registrar el experimento.
+  - **f) Descarga del modelo:** pipeline con `--detector owlvit --repeticiones 1 --calentamiento 0` en `/content/runs/_descarga_owlvit`. Solo baja el modelo y calienta la caché; no se copia ni se registra.
+  - **g) Medición válida:** pipeline con `--detector owlvit` (5 repeticiones y 1 de calentamiento, los valores por defecto) en `/content/runs/v0_colab_owlvit`.
+  - **h) Copia:** `shutil.copytree` de esa carpeta a `MyDrive/tfg-lechugas/runs/v0_colab_owlvit` (`dirs_exist_ok=True`: repetirla sobrescribe) y lista de archivos copiados con su tamaño.
+- Una celda de texto inicial (requisitos y qué produce) y otra final: descargar la carpeta a `runs/v0_colab_owlvit` del repo local y registrarla con `/registrar-experimento exp001 runs/v0_colab_owlvit`.
+- `tests/test_notebook_colab.py`: ver Pruebas.
 
-**Antes de hacer commit:** borrar las salidas (*Clear All Outputs*) y comprobar que no queda ninguna ruta ni dato personal.
+**Cambios sobre el brief**
+- Solo se ejecuta `owlvit` en Colab, no «los dos detectores»: `whole` no usa GPU y ya está medido en local. La fila que falta de `exp001` es «owlvit / Colab T4».
+- Se añade una ejecución previa de descarga (celda f) y la medición válida va en otra carpeta (celda g): así la carga del modelo y la caché no contaminan los tiempos y solo se registra la segunda.
+- Los resultados van a `MyDrive/tfg-lechugas/runs/v0_colab_owlvit`, no a `.../runs/v0`, para que el nombre coincida con el de `runs/` en local y con la fila de la nota.
+- `ejecutar()` sustituye a los comandos con `!`: es más largo, pero para en el primer fallo y se puede probar sin Colab.
+- La copia a Drive incluye las fotos anotadas (`*_anotada.jpg`) además de los JSON; van a Drive, no al repositorio.
+- `ejecutar()` trocea el comando como en Linux (`shlex`): está pensado para Colab, donde las rutas llevan `/` y no tienen espacios. En Windows habría que pasarle rutas con `/`.
+
+**Pruebas** (`tests/test_notebook_colab.py`, 61 casos)
+- Sobre el notebook real: `nbformat == 4` y kernel `python3`; ninguna celda de código con salidas ni `execution_count` (las de código llevan las dos claves y las de texto no llevan `outputs`); ningún texto con `C:\Users`, `C:/Users`, `/Users/`, `token`, `secret`, `password` ni `Bearer` (sin distinguir mayúsculas, en el JSON crudo y en el texto de las celdas); el código menciona `requirements.txt` y `--detector owlvit`; pide GPU; ids de celda únicos; pasa `nbformat.validate`; ocho celdas de código en el orden descrito; cada una es Python válido; no importa `src`; no hay magics; ningún `pip install` nombra torch.
+- Con Drive, git y comandos simulados se **ejecutan** las celdas: parámetros, `ejecutar` (salida en directo, código de salida, error si falla), la comprobación de fotos (carpeta ausente, vacía, extensiones, mayúsculas), clonar o actualizar, hash frente a rama, las órdenes exactas de pip y del pipeline (`cwd` en la raíz del repo, `--repeticiones 1 --calentamiento 0` solo en la descarga, carpeta propia en la medición) y la copia a Drive (solo la medición válida; repetirla no falla).
+- Comprobadores con notebooks de ejemplo: uno con salidas y `execution_count` falla y uno limpio pasa; cada texto prohibido, nbformat 3, otro kernel, y la falta de `requirements.txt` o de `--detector owlvit` se detectan.
+- Orden seguido: sin notebook las pruebas del notebook fallaban con «No existe el notebook»; con un notebook de ejemplo con salidas fallaban solo las dos de salidas (16 problemas, 2 por cada celda de código); con el notebook limpio pasan. Además se mutaron 23 aspectos del notebook (descarga, orden de git, pip, copia, comprobaciones de fotos...) en copias fuera del repo y todas las mutaciones se detectaron.
+
+**Lo que no se ha comprobado:** el notebook **no se ha ejecutado en Colab** (aquí no hay Colab ni GPU). Se han verificado su estructura, que el Python de cada celda es válido, que las órdenes coinciden con las del pipeline que sí se ejecuta en local y que las celdas a) y g), con el `ejecutar` real y el detector `whole` sobre fotos sintéticas, lanzan el pipeline y paran ante un fallo.
+
+**Medición con CUDA (revisión, sin cambios en `src/`).** No hay `torch.cuda.synchronize()` en `src/`; los tiempos incluyen la espera a la GPU de forma implícita: dentro de `detect()` el postprocesado indexa con una máscara booleana y copia a CPU (`.cpu()`), y ambas operaciones bloquean hasta que la GPU termina, y el cronómetro envuelve `detect()` entero. Matices al leer los datos de Colab: `model_load_ms` incluye `import torch` y `transformers`, crear el contexto CUDA y mover el modelo, no solo leer pesos; `Memoria (MB)` es RAM del proceso, no VRAM; la primera inferencia en GPU incluye inicializaciones perezosas (el calentamiento por defecto las descarta). Una sincronización explícita sería una tarea aparte.
+
+**Antes de hacer commit:** comprobar que el notebook sigue sin salidas ni rutas ni datos personales. Si se abre y se ejecuta en Colab y se vuelve a guardar, borrar las salidas (*Clear All Outputs*); la prueba lo comprueba.
 
 ---
 
