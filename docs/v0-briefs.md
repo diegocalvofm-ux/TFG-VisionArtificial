@@ -183,11 +183,25 @@ En `groups` aparecen los seis grupos, en el orden de `GROUPS`; el ejemplo muestr
 
 **Rama:** `v0/medicion`
 
-**Entrega**
-- `src/utils/env.py`: devuelve versiones de Python, PyTorch (si está) y OpenCV, el sistema operativo y el dispositivo.
-- `src/utils/profiling.py`: tiempo por imagen (mediana de N repeticiones tras una de calentamiento) y memoria residente con `psutil`. Se integra en el JSON del pipeline.
+**Entrega** (implementada)
+- `src/utils/env.py`: `get_env(detector, dispositivo)` devuelve un diccionario con `python`, `opencv`, `torch` (`None` si no está instalado), `sistema` (sistema operativo y versión, sin nombre de equipo ni de usuario), `device` (`cpu` o `cuda`), `detector`, `commit` (`git rev-parse --short HEAD` en la raíz del repo) y `dirty` (`True` si `git status --porcelain -- src configs` devuelve algo). Fuera de un repo o sin git, `commit` y `dirty` son `None` sin error. Ningún valor lleva rutas absolutas ni el usuario del sistema: si alguno las llevase, se sustituye por `None`. `torch` se lee de los metadatos del paquete (`importlib.metadata`), no con `import torch`, porque importarlo tarda segundos y con `whole` no hace falta.
+- `src/utils/profiling.py`: `medir(func, repeticiones=5, calentamiento=1)` ejecuta `func` `calentamiento` veces sin medir y `repeticiones` veces midiendo con `time.perf_counter`, y devuelve la **mediana en ms**; `mediana(valores)`; `validar_repeticiones`; y `rss_mb()`, la memoria residente **actual** con `psutil`, en MB (tras la inferencia, no el pico).
+- `src/pipeline/run.py`: `--repeticiones` (5 por defecto) y `--calentamiento` (1 por defecto). Cada imagen se procesa como un ciclo (detección, evaluación y agregación) que se repite; `detect` y `assess` de `timing_ms` son las medianas de las pasadas medidas y `total` la mediana del ciclo completo. Con `--repeticiones 1 --calentamiento 0` el comportamiento es el de antes. Valores inválidos dan código de salida 2 antes de cargar el modelo. El entorno se calcula una vez por ejecución, no por imagen.
+- `src/pipeline/detectors/owlvit.py`: `OwlViTDetector.dispositivo` (público) para que el pipeline sepa si corrió en `cpu` o `cuda`.
 
-**Pruebas:** que `env` devuelva las claves esperadas y que la mediana se calcule bien con tiempos simulados.
+**Claves nuevas del JSON** (las anteriores no cambian): `image_size` (`[ancho, alto]`), `model_load_ms` (de `tiempo_carga_s`; `null` si el detector no carga modelo), `rss_mb`, `timing_ms.repeticiones` y `timing_ms.calentamiento`, y `env` ampliado (`torch`, `sistema`, `device`, `detector`, `commit`, `dirty`, además de `python` y `opencv`). Son los campos que ya lee el registro de experimentos.
+
+**Cambios sobre el brief**
+- `total` es la mediana del ciclo completo, no la suma de las medianas de `detect` y `assess`; con varias repeticiones, `total ≥ detect + assess` ya no tiene por qué cumplirse exactamente.
+- Con los valores por defecto, `owlvit` hace `repeticiones + calentamiento` = 6 inferencias por imagen. Quien llame a `procesar_imagen` directamente conserva `repeticiones=1` y `calentamiento=0`; los 5 y 1 son los de la línea de comandos.
+- `dirty` cuenta también los archivos nuevos sin seguir en `src` y `configs`.
+- Las pruebas del pipeline que fijaban el JSON con igualdad exacta pasan a comprobar que contiene al menos las claves de antes.
+
+**Pruebas:** que `env` devuelva las claves esperadas (con git, platform y psutil simulados), que la mediana se calcule bien con tiempos simulados, con número par e impar de repeticiones, que el calentamiento no cuente, que `commit` y `dirty` sean `None` fuera de un repo, que ningún valor de `env` lleve rutas absolutas ni el usuario, y que el JSON del pipeline traiga las claves nuevas y conserve las anteriores.
+
+**Datos medidos en esta tarea** (portátil, CPU, `whole` y `owlvit` sobre dos imágenes sintéticas de 640×480; orientativos, no son lechugas):
+- `whole`: una sola medida (`--repeticiones 1 --calentamiento 0`) dio 0,0100 ms de detección; con 5 repeticiones tras 1 de calentamiento, la mediana fue 0,0009 ms.
+- `owlvit` con `--repeticiones 3 --calentamiento 1`: mediana de detección 333,6 ms, carga del modelo 11 102 ms y memoria residente 982 MB (con `whole`, 79 MB).
 
 ## TAREA 6: notebook de Colab
 
@@ -198,6 +212,27 @@ En `groups` aparecen los seis grupos, en el orden de `GROUPS`; el ejemplo muestr
 **Antes de hacer commit:** borrar las salidas (*Clear All Outputs*) y comprobar que no queda ninguna ruta ni dato personal.
 
 ---
+
+## Registro de experimentos
+
+Sistema para dejar constancia de cada experimento en su nota de Obsidian sin copiar datos a mano. No es una tarea numerada de la v0: sirve para rellenar `exp001` y los experimentos siguientes.
+
+**Qué hay**
+- Comando `/registrar-experimento` (`.claude/commands/registrar-experimento.md`): el autor le da la información y Claude la lleva a la nota, pidiendo lo que falte en lugar de suponerlo.
+- Script `python -m src.experimentos.registro`, con tres órdenes. Código en `src/experimentos/` (`nota.py`, `ejecuciones.py`, `git.py`, `privacidad.py`, `registro.py`) y pruebas en `tests/experimentos/`.
+
+**Órdenes**
+- `nuevo`: crea el siguiente `docs/experimentos/expNNN.md` desde `docs/plantillas/experimento.md` (sustituye `{{title}}` y `{{date:YYYY-MM-DD}}`) con los campos que se den; el resto queda vacío. Con `--config` guarda la ruta relativa del YAML y una copia literal en la sección "Configuración". Nunca sobrescribe una nota.
+- `ejecucion`: lee los `*.json` de `--runs` y añade o actualiza una fila de la tabla de Resultados (clave: detector + dispositivo, así repetir no duplica). Calcula nº de imágenes, mediana de `timing_ms.total` y de `timing_ms.detect`, lechugas detectadas, imágenes sin detección y recuento de niveles. Los JSON con formato incorrecto se avisan por su nombre.
+- `campos --set clave=valor`: cambia solo esas líneas de la cabecera (`estado`, `valor`, `metrica_principal`...).
+
+**Cabecera y tipos.** Las propiedades son las de la plantilla: `id, fecha, estado, objetivo, dataset, dataset_version, modelo, config, commit, entorno, python, torch, metrica_principal, valor, carpeta_drive, tags`, y la cabecera sigue siendo YAML válido (una prueba la lee con `yaml.safe_load`). `valor` se escribe como número (con punto decimal; `0,35` o `85%` se rechazan), `fecha` como fecha ISO, `tags` es una lista y todo lo demás es texto: un commit o una versión que parezcan un número (`1234567`, `3.13`) se entrecomillan para que no se lean como número. Lo automático va entre marcadores `<!-- registro:... -->`, solos en su línea y con una línea en blanco alrededor; lo que escribe el autor fuera de ellos no se toca.
+
+**Privacidad.** Las notas y todo lo que imprime el script llevan solo rutas relativas a la raíz del repo, nunca rutas absolutas ni el nombre de usuario del sistema: `--config` se guarda relativa (fuera del repo es un error), la salida pasa por un saneador y un valor con una ruta absoluta o con el usuario se rechaza.
+
+**Datos medidos y pendientes de la tarea 5.** Solo se escribe lo que da el autor o lo que se mide en los JSON; lo demás queda vacío (nunca a 0) y el script lo lista como "Sin dato". Hoy el JSON no trae el detector ni el dispositivo: se piden con `--detector` y `--dispositivo`. Cuando la tarea 5 los añada, el script ya usa, si existen, `env.detector`, `env.device`, `env.commit`, `env.dirty`, `image_size`, `rss_mb` y `model_load_ms` (buscados en el nivel superior, en `env` y en `timing_ms`), y la tabla muestra commit, árbol sucio, tamaño de imagen, carga del modelo y memoria (máximo). El commit de la cabecera sale de `--commit`, del JSON o de `git rev-parse` (con aviso si hay cambios sin commitear), y nunca pisa uno ya anotado; las columnas `Commit` y `Sucio` de la tabla salen solo del JSON.
+
+**Límites.** La mediana es entre imágenes, sin calentamiento controlado (eso es la tarea 5). El script corre en el portátil y no lee Drive: los JSON de Colab hay que descargarlos. No hay informes ni CSV; los reportes se hacen desde Obsidian (`docs/experimentos.base`) o a mano.
 
 ## Nota exp001 para Obsidian
 

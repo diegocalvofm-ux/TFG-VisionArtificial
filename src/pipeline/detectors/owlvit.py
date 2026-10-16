@@ -210,6 +210,7 @@ class OwlViTDetector:
         cargado = cargador(config)
         self.tiempo_carga_s: float = time.perf_counter() - inicio
         self._procesador, self._modelo, self._dispositivo, self._sin_gradiente = cargado
+        self.dispositivo: str = self._dispositivo  # "cpu" o "cuda": lo lee el pipeline para el JSON
 
     def detect(self, imagen: np.ndarray) -> list[Detection]:
         """Devuelve las lechugas encontradas, de mayor a menor puntuación.

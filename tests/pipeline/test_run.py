@@ -98,10 +98,11 @@ def test_caso6_sin_detecciones_da_lettuces_vacio_sin_fallar(crear_imagen, tabla)
 def test_caso4_la_estructura_del_resultado(crear_imagen, tabla):
     resultado = procesar_imagen(crear_imagen(), "foto.png", WholeDetector(), NullAssessor(), tabla)
 
-    assert set(resultado) == {"image", "lettuces", "timing_ms", "env"}
+    # La tarea 5 amplía el JSON (claves nuevas); las de antes tienen que seguir estando.
+    assert {"image", "lettuces", "timing_ms", "env"} <= set(resultado)
     assert resultado["image"] == "foto.png"
-    assert set(resultado["timing_ms"]) == {"detect", "assess", "total"}
-    assert set(resultado["env"]) == {"python", "opencv"}
+    assert {"detect", "assess", "total"} <= set(resultado["timing_ms"])
+    assert {"python", "opencv"} <= set(resultado["env"])
     assert resultado["env"]["python"] == platform.python_version()
     assert resultado["env"]["opencv"] == cv2.__version__
     lechuga = resultado["lettuces"][0]
@@ -115,8 +116,8 @@ def test_caso11_los_tiempos_son_numeros_no_negativos(crear_imagen, tabla):
     resultado = procesar_imagen(crear_imagen(), "foto.png", WholeDetector(), NullAssessor(), tabla)
     tiempos = resultado["timing_ms"]
 
-    for valor in tiempos.values():
-        assert isinstance(valor, float) and valor >= 0
+    for clave in ("detect", "assess", "total"):  # repeticiones y calentamiento son enteros
+        assert isinstance(tiempos[clave], float) and tiempos[clave] >= 0
     assert tiempos["total"] >= tiempos["detect"] + tiempos["assess"] - 1e-9
 
 
@@ -133,7 +134,7 @@ def test_caso4_el_json_escrito_tiene_el_esquema_y_se_relee(
 
     ruta = salida / "foto01.json"
     datos = _leer_json(ruta)
-    assert set(datos) == {"image", "lettuces", "timing_ms", "env"}
+    assert {"image", "lettuces", "timing_ms", "env"} <= set(datos)
     assert datos["image"] == "foto01.png"
     assert set(datos["lettuces"][0]) == CLAVES_LECHUGA
     assert list(datos["lettuces"][0]["groups"]) == list(GROUPS)

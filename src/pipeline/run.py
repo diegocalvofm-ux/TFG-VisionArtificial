@@ -28,6 +28,8 @@ from src.pipeline.detectors import crear_detector, nombres_detectores
 from src.pipeline.draw import dibujar
 from src.pipeline.imagenes import EXTENSIONES, guardar_imagen, leer_imagen
 from src.pipeline.types import Assessor, Detector
+from src.utils.env import get_env
+from src.utils.profiling import mediana, medir, rss_mb, validar_repeticiones
 
 # Raíz del repositorio: las rutas por defecto se calculan desde aquí, no desde la carpeta
 # en la que se lance el comando, para que no aparezca un "runs/" en un sitio inesperado.
@@ -72,48 +74,107 @@ def crear_parser() -> argparse.ArgumentParser:
         default=None,
         help="solo owlvit: texto de búsqueda; sustituye al de la configuración",
     )
+    parser.add_argument(
+        "--repeticiones",
+        type=int,
+        default=5,
+        help=(
+            "veces que se mide cada imagen; los tiempos del JSON son la mediana (por defecto 5). "
+            "Con owlvit cada imagen se infiere repeticiones + calentamiento veces"
+        ),
+    )
+    parser.add_argument(
+        "--calentamiento",
+        type=int,
+        default=1,
+        help="pasadas previas que no se miden, para no contar el arranque en frío (por defecto 1)",
+    )
     return parser
 
 
 def procesar_imagen(
-    imagen: np.ndarray, nombre: str, detector: Detector, assessor: Assessor, tabla: Mapping
+    imagen: np.ndarray,
+    nombre: str,
+    detector: Detector,
+    assessor: Assessor,
+    tabla: Mapping,
+    *,
+    env: Mapping | None = None,
+    repeticiones: int = 1,
+    calentamiento: int = 0,
+    reloj=time.perf_counter,
 ) -> dict:
     """Procesa una imagen ya cargada y devuelve el resultado listo para guardar como JSON.
 
     En lenguaje llano: pide al detector las lechugas; para cada una pide al asesor la
-    etiqueta de los seis grupos y calcula el nivel global con ``aggregate``. Mide cuánto
-    tarda cada etapa (en milisegundos, con ``time.perf_counter``). El ``total`` cubre la
-    detección y la evaluación, pero no leer ni escribir archivos. Si no hay detecciones,
-    ``lettuces`` queda como lista vacía.
+    etiqueta de los seis grupos y calcula el nivel global con ``aggregate``. Todo eso es un
+    "ciclo", y se repite ``calentamiento`` veces sin medir (para no contar el arranque en
+    frío) y ``repeticiones`` veces midiendo. En ``timing_ms`` (milisegundos) ``detect`` y
+    ``assess`` son las medianas de la detección y de la evaluación de las pasadas medidas, y
+    ``total`` la mediana del ciclo completo (no la suma de las otras dos: con varias
+    repeticiones pueden no coincidir). El total no incluye leer ni escribir archivos. Las
+    lechugas del JSON son las de la última pasada. Con ``repeticiones=1`` y
+    ``calentamiento=0`` es una sola medida, como antes.
+
+    Además del resultado de siempre, el JSON lleva ``image_size`` (``[ancho, alto]``),
+    ``model_load_ms`` (cuánto tardó en cargarse el modelo del detector; ``None`` si no carga
+    modelo), ``rss_mb`` (memoria residente tras las repeticiones, no el pico) y, en
+    ``timing_ms``, ``repeticiones`` y ``calentamiento``. ``env`` es el entorno (ver
+    ``src.utils.env.get_env``); si no se da, solo las versiones de Python y OpenCV.
     """
-    inicio = time.perf_counter()
-    antes = time.perf_counter()
-    detecciones = detector.detect(imagen)
-    ms_detectar = (time.perf_counter() - antes) * 1000
+    validar_repeticiones(repeticiones, calentamiento)
+    ms_detectar: list[float] = []
+    ms_evaluar: list[float] = []
+    ultimo: dict = {}
 
-    lechugas = []
-    ms_evaluar = 0.0
-    for deteccion in detecciones:
-        antes = time.perf_counter()
-        grupos = assessor.assess(imagen, deteccion)
-        ms_evaluar += (time.perf_counter() - antes) * 1000
-        agregado = aggregate(grupos, tabla)
-        lechugas.append(
-            {
-                "box": [int(valor) for valor in deteccion.box],
-                "score": float(deteccion.score),
-                "groups": dict(grupos),
-                "global": agregado.level,
-                "provisional_labels": agregado.provisional_labels,
-            }
-        )
-    ms_total = (time.perf_counter() - inicio) * 1000
+    def ciclo() -> None:
+        antes = reloj()
+        detecciones = detector.detect(imagen)
+        ms_detectar.append((reloj() - antes) * 1000)
 
+        lechugas = []
+        evaluacion = 0.0
+        for deteccion in detecciones:
+            antes = reloj()
+            grupos = assessor.assess(imagen, deteccion)
+            evaluacion += (reloj() - antes) * 1000
+            agregado = aggregate(grupos, tabla)
+            lechugas.append(
+                {
+                    "box": [int(valor) for valor in deteccion.box],
+                    "score": float(deteccion.score),
+                    "groups": dict(grupos),
+                    "global": agregado.level,
+                    "provisional_labels": agregado.provisional_labels,
+                }
+            )
+        ms_evaluar.append(evaluacion)
+        ultimo["lechugas"] = lechugas
+
+    ms_total = medir(ciclo, repeticiones, calentamiento, reloj=reloj)
+    # Las primeras ``calentamiento`` pasadas son de calentamiento: no entran en las medianas.
+    ms_detectar, ms_evaluar = ms_detectar[calentamiento:], ms_evaluar[calentamiento:]
+
+    carga = getattr(detector, "tiempo_carga_s", None)  # solo los detectores con modelo
+    alto, ancho = imagen.shape[:2]
     return {
         "image": nombre,
-        "lettuces": lechugas,
-        "timing_ms": {"detect": ms_detectar, "assess": ms_evaluar, "total": ms_total},
-        "env": {"python": platform.python_version(), "opencv": cv2.__version__},
+        "lettuces": ultimo["lechugas"],
+        "timing_ms": {
+            "detect": mediana(ms_detectar),
+            "assess": mediana(ms_evaluar),
+            "total": ms_total,
+            "repeticiones": repeticiones,
+            "calentamiento": calentamiento,
+        },
+        "env": (
+            dict(env)
+            if env is not None
+            else {"python": platform.python_version(), "opencv": cv2.__version__}
+        ),
+        "image_size": [int(ancho), int(alto)],
+        "model_load_ms": None if carga is None else carga * 1000,
+        "rss_mb": rss_mb(),
     }
 
 
@@ -125,7 +186,15 @@ def _escribir_json(ruta: Path, datos: dict) -> None:
 
 
 def procesar_carpeta(
-    entrada: Path, salida: Path, detector: Detector, assessor: Assessor, tabla: Mapping
+    entrada: Path,
+    salida: Path,
+    detector: Detector,
+    assessor: Assessor,
+    tabla: Mapping,
+    *,
+    env: Mapping | None = None,
+    repeticiones: int = 1,
+    calentamiento: int = 0,
 ) -> tuple[int, int]:
     """Procesa todas las imágenes de una carpeta y devuelve ``(procesadas, saltadas)``.
 
@@ -133,7 +202,8 @@ def procesar_carpeta(
     en subcarpetas). Por cada imagen escribe ``<nombre>.json`` y ``<nombre>_anotada.jpg`` en
     la carpeta de salida. Lo que no se puede procesar (extensión no admitida, imagen
     corrupta, o un nombre repetido con otra extensión) se salta con un aviso, y el
-    proceso sigue con el resto.
+    proceso sigue con el resto. ``env``, ``repeticiones`` y ``calentamiento`` se pasan a
+    ``procesar_imagen``; el entorno se calcula una vez por ejecución, no por imagen.
     """
     entrada, salida = Path(entrada), Path(salida)
     salida.mkdir(parents=True, exist_ok=True)
@@ -174,7 +244,10 @@ def procesar_carpeta(
             continue
 
         ya_usados[clave] = ruta.name
-        resultado = procesar_imagen(imagen, ruta.name, detector, assessor, tabla)
+        resultado = procesar_imagen(
+            imagen, ruta.name, detector, assessor, tabla,
+            env=env, repeticiones=repeticiones, calentamiento=calentamiento,
+        )  # fmt: skip
         _escribir_json(salida / f"{ruta.stem}.json", resultado)
         guardar_imagen(salida / f"{ruta.stem}_anotada.jpg", dibujar(imagen, resultado["lettuces"]))
         procesadas += 1
@@ -218,6 +291,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Error: la carpeta de entrada no existe: {argumentos.input}", file=sys.stderr)
         return 2
     try:
+        # Antes de cargar ningún modelo: un valor inválido no debe costar la carga.
+        validar_repeticiones(argumentos.repeticiones, argumentos.calentamiento)
         cfg = load_config(argumentos.config)
         tabla = load_config(argumentos.tabla)
         nombre = argumentos.detector or cfg.get("detector")
@@ -225,6 +300,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError("no se indicó detector ni hay 'detector' en la configuración")
         cfg = _aplicar_opciones(cfg, nombre, argumentos)
         detector = crear_detector(nombre, cfg)
+        # El entorno se calcula una sola vez (son dos llamadas a git): vale para todas las imágenes.
+        env = get_env(nombre, getattr(detector, "dispositivo", "cpu"))
     except (OSError, ImportError, ValueError, yaml.YAMLError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 2
@@ -233,8 +310,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if tiempo_carga is not None:
         print(f"Carga del modelo: {tiempo_carga:.2f} s")
     procesadas, saltadas = procesar_carpeta(
-        argumentos.input, argumentos.out, detector, NullAssessor(), tabla
-    )
+        argumentos.input, argumentos.out, detector, NullAssessor(), tabla,
+        env=env, repeticiones=argumentos.repeticiones, calentamiento=argumentos.calentamiento,
+    )  # fmt: skip
     print(f"Procesadas: {procesadas} | Saltadas: {saltadas} | Salida: {argumentos.out}")
     if procesadas == 0:
         print("Error: no se procesó ninguna imagen", file=sys.stderr)
