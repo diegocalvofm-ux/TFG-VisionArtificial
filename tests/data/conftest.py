@@ -13,7 +13,18 @@ _VALORES_OK = {
     "daño_fisico": "PHYSICAL_OK",
     "daño_bio": "BIO_OK",
 }
-_VISTAS = ("cenital", "lateral", "base")
+_VISTAS = ("cenital", "lateral_a", "lateral_b", "base")
+# Columnas de contexto de captura: opcionales, así que en la tabla mínima válida van vacías.
+_CONTEXTO_VACIO = {
+    "variedad": "",
+    "estado_seq": "",
+    "horas_desde_corte": "",
+    "conservacion": "",
+    "temperatura_c": "",
+    "intervencion": "",
+    "dispositivo": "",
+    "archivo_original": "",
+}
 
 
 @pytest.fixture
@@ -38,8 +49,12 @@ def metadata_valida():
                     "sesion": "s1",
                     **_VALORES_OK,
                     "salida_global": "",
+                    **_CONTEXTO_VACIO,
                 }
                 filas.append(fila)
-        return pd.DataFrame(filas)
+        df = pd.DataFrame(filas)
+        # Tipo ``object`` en las columnas de contexto: con el tipo texto de pandas 3 no se podría
+        # asignar un número o un booleano a una celda, y las pruebas necesitan probar esos casos.
+        return df.astype(dict.fromkeys(_CONTEXTO_VACIO, object))
 
     return fabrica
