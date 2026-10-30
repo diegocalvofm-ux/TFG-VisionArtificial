@@ -1,0 +1,15 @@
+# Fuente pública: segmentación de lechugas (Roboflow, formato COCO).
+# Licencia tomada del campo "licenses" del JSON del ZIP.
+fuente: giovi
+licencia: CC BY 4.0
+zip: data/raw/lettuce_segmentation_giovi.zip   # relativa a la raíz del repositorio
+
+# clase del ZIP -> destino (lechuga | kern | tipburn | ignorar)
+clases:
+  Lettuce-plant: lechuga
+
+excluir_imagenes: []
+
+# Reparto de la etapa 1: todo a train (valid y test salen solo de svodk). Al ir entera a una
+# sola partición no hace falta agrupar sus imágenes.
+papel: train_only
