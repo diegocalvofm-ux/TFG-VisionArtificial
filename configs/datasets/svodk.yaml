@@ -1,0 +1,31 @@
+# Fuente pública: lechugas ("krop") y su corazón ("kern") en fotogramas de vídeo (Roboflow, COCO).
+# Licencia tomada del campo "licenses" del JSON del ZIP.
+fuente: svodk
+licencia: MIT
+zip: data/raw/lettuce_segmentation_svodk_MIT.zip   # relativa a la raíz del repositorio
+
+# clase del ZIP -> destino (lechuga | kern | tipburn | ignorar)
+clases:
+  krop: lechuga
+  kern: kern
+  kern-krop: ignorar   # categoría "padre" de Roboflow: no tiene anotaciones
+
+excluir_imagenes: []
+
+# Reparto de la etapa 1: valid sale SOLO de esta fuente. No hay test: la evaluación final se
+# hará con datos propios, así que la carpeta test del dataset queda sin imágenes.
+papel: split
+
+# Reparto TEMPORAL en lugar de por grupos. Por qué: esta fuente es UN SOLO VÍDEO y hay un
+# fotograma cada ~0,3 s (nombres frameH-MM-SS-cc), así que fotogramas contiguos son casi
+# idénticos. Un reparto al azar pondría en valid fotos casi iguales a las de train y las
+# métricas saldrían inflados. Se ordenan por tiempo: train los primeros y valid los últimos,
+# con un único corte; y se descartan los fotogramas a menos de margen_s segundos del corte
+# (a los dos lados), de modo que entre train y valid queda un hueco de al menos 2·margen_s.
+# Con dos fracciones hay un solo corte; con tres (train, valid y test) habría dos.
+# Es determinista (no usa semilla).
+particion_temporal:
+  # H, MM, SS y cc (centésimas) -> segundos = H*3600 + MM*60 + SS + cc/100
+  patron: 'frame(\d+)-(\d+)-(\d+)-(\d+)_'
+  fracciones: {train: 0.80, valid: 0.20}   # por número de imágenes, en orden temporal
+  margen_s: 5   # opcional; 5 por defecto

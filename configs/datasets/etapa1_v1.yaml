@@ -1,0 +1,8 @@
+# Dataset de la etapa 1 (localizar la lechuga), versión 1.
+# Fuentes: nombres de los YAML de esta misma carpeta (configs/datasets/<fuente>.yaml).
+# tipburn queda fuera hasta su auditoría (ver configs/datasets/tipburn.yaml).
+fuentes:
+  - svodk
+  - giovi
+semilla: 42
+salida: data/processed/etapa1_v1   # relativa a la raíz; se borra y se regenera en cada importación

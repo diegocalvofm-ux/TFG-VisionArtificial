@@ -1,0 +1,19 @@
+# Fuente pública: lechugas y quemadura de punta ("tipburn") (Roboflow, formato COCO).
+# Licencia tomada del campo "licenses" del JSON del ZIP.
+#
+# PENDIENTE: auditoría y filtro de las imágenes. Por eso NO está en etapa1_v1.yaml todavía;
+# este YAML se conserva para cuando se incluya.
+fuente: tipburn
+licencia: CC BY 4.0
+zip: data/raw/lettuce_segmentation_tipburn.zip   # relativa a la raíz del repositorio
+
+# clase del ZIP -> destino (lechuga | kern | tipburn | ignorar)
+clases:
+  lettuce: lechuga
+  tipburn: tipburn
+
+excluir_imagenes: []
+
+# Reparto de la etapa 1: todo a train (valid y test salen solo de svodk). Al ir entera a una
+# sola partición no hace falta agrupar sus imágenes.
+papel: train_only
