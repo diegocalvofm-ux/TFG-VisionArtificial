@@ -1,0 +1,31 @@
+# Dependencias del entrenamiento de RF-DETR (etapa 1), con versión exacta.
+#
+# NO incluye torch ni torchvision: en Colab ya vienen instalados y en local el .venv usa la
+# versión de CPU. Se instala siempre con un constraints que los fija para que pip no los cambie:
+#   pip install -c constraints.txt -r requirements-train.txt
+# (ver notebooks/02_entrenamiento_etapa1.ipynb y `python -m src.train.entorno`).
+#
+# rfdetr 1.11.2 (Apache-2.0), publicada el 2026-10-04. Se instala SIN el extra [train] a propósito:
+# el extra arrastra `roboflow`, que solo se usa para descargar datasets y que trae
+# opencv-python-headless (choca con el opencv-python de Colab). Aquí van, fijadas, las dependencias
+# del extra [train] que sí se usan. Las versiones son las que resuelve pip con solo paquetes de más
+# de 14 días (hasta 2026-10-18) y tienen rueda para Linux con Python 3.13 (Colab).
+#
+# numpy, scipy, pydantic, transformers, requests, tqdm y pillow NO se fijan: Colab los trae en
+# versiones que cumplen los rangos de rfdetr y fijarlos los reinstalaría. Las versiones usadas en
+# cada ejecución se guardan en runs/<exp_id>/entorno.json.
+rfdetr==1.11.2
+pytorch-lightning==2.6.6
+torchmetrics==1.8.2
+lightning-utilities==0.15.3
+hotcoco==1.0.1
+faster-coco-eval==1.8.0
+ultrafast-pycocotools==0.1.13
+vernier==0.5.4
+pycocotools==2.0.11
+simplejpeg==1.9.0
+torch-hungarian==0.1.0rc0
+supervision==0.31.0
+peft==0.21.2
+accelerate==1.15.0
+pyDeprecate==0.9.0
