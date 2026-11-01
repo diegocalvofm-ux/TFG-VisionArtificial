@@ -1,0 +1,36 @@
+# Entrenamiento de RF-DETR Nano para la etapa 1 (localizar la lechuga) con el dataset etapa1_v1.
+# Todos los parámetros del entrenamiento salen de aquí (el código no lleva valores fijos).
+# Valores de partida: se ajustan tras el primer --smoke (tiempo por época y memoria de la GPU).
+
+modelo:
+  clase: RFDETRNano    # solo modelos Apache-2.0 (Nano, Small, Medium); XL y 2XL son rfdetr_plus (PML)
+  resolucion: 384      # la del preentrenamiento del Nano; múltiplo de 32 (patch 16 x 2 ventanas)
+  clases: [lechuga]    # una sola clase, la del dataset exportado
+
+entrenamiento:
+  epocas: 30           # se ajusta desde pesos COCO; valid (39 imágenes) no distingue mejoras finas
+  batch_size: 8        # lote físico prudente para los 16 GB de una T4 con fp16
+  grad_accum_steps: 2  # lote efectivo 8 x 2 = 16
+  lr: 1.0e-4           # valores por defecto de rfdetr para un lote efectivo de 16
+  lr_encoder: 1.5e-4
+  amp_dtype: auto      # rfdetr elige fp16 en la T4 (sin bf16) y fp32 en CPU
+  num_workers: 2
+  early_stopping: false
+  checkpoint_interval: 10
+  tensorboard: false   # no hace falta: el metrics.csv se escribe siempre
+  dispositivo: auto    # cuda si hay GPU, si no cpu
+
+semilla: 42
+
+datos:
+  dataset: data/processed/etapa1_v1   # relativa a la raíz; la genera src.data.importar_publicos
+  repeticiones_svodk: 1               # k: las imágenes de svodk aparecen k veces en train, nunca en valid
+  prefijo_svodk: "svodk_"             # los nombres de archivo exportados empiezan por la fuente
+  trabajo: data/processed/trabajo     # copias de trabajo <trabajo>/<exp_id>/ (fuera de runs/ y de Drive)
+
+salida:
+  carpeta: runs                       # cada ejecución va a runs/<exp_id>/
+
+smoke:                                # --smoke: una prueba rápida de que todo funciona
+  epocas: 1
+  imagenes_train: 20
