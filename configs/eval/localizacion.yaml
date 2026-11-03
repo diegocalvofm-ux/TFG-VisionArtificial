@@ -1,0 +1,45 @@
+# Evaluación de la localización de lechugas (etapa 1): OWL-ViT sin entrenar, RF-DETR Nano y una
+# línea base clásica en HSV. Todos los parámetros salen de aquí (el código no lleva valores fijos).
+# Las rutas son relativas a la raíz del repositorio. Los valores marcados "fijado de antemano" no se
+# ajustan mirando la partición que se informa (sesgaría el resultado).
+
+conjunto:
+  carpeta: data/processed/etapa1_v1   # dataset COCO exportado por src.data.importar_publicos
+  particion: valid                    # test está vacío; valid ya se usó para elegir el checkpoint de RF-DETR
+  clase: lechuga                      # nombre de la única categoría
+
+metodos: [owlvit, rfdetr, linea_base_hsv]   # métodos activos (cualquier subconjunto, sin repetir)
+
+iou_min: 0.5          # un TP exige IoU >= este valor
+dispositivo: cpu      # la latencia se mide en CPU: cpu | cuda
+
+medicion:
+  repeticiones: 5     # pasadas medidas por imagen (se guarda su mediana)
+  calentamiento: 1    # pasadas previas que no se miden
+
+owlvit:
+  config_base: configs/v0.yaml   # de ahí salen modelo, nms_iou y los valores que aquí valgan null
+  consulta: null                 # null = la de configs/v0.yaml
+  umbral: null                   # umbral operativo (P/R/F1); null = el de configs/v0.yaml
+  umbral_ap: 0.01                # umbral bajo con el que se corre el modelo para calcular el AP
+  max_detecciones: 50            # tope de cajas por imagen; v0 usa 10, con ~14 lechugas por imagen el recall quedaría topado
+
+rfdetr:
+  pesos: runs/exp002-etapa1-rfdert-n/pesos/checkpoint_best_total.pth
+  umbral: 0.5          # umbral operativo, fijado de antemano
+  umbral_ap: 0.001     # umbral bajo con el que se corre el modelo para calcular el AP
+
+linea_base_hsv:       # sin aprendizaje; valores por defecto, no ajustados para este conjunto
+  h: [35, 85]         # tono de OpenCV (0-179): verde
+  s: [40, 255]        # saturación
+  v: [40, 255]        # brillo
+  apertura_px: 5      # lado del kernel elíptico de la apertura (quita motas)
+  cierre_px: 15       # lado del kernel elíptico del cierre (tapa huecos)
+  area_min_frac: 0.005   # área mínima de una componente, como fracción del área de la imagen
+
+ejemplos:
+  numero: 10          # imágenes de ejemplo por método (las mismas para todos los métodos)
+  semilla: 42
+
+salida:
+  carpeta: runs       # cada ejecución va a runs/<exp-id>/
