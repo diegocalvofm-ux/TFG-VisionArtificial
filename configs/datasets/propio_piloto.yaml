@@ -1,0 +1,163 @@
+# Ingesta de las fotos propias, sesión piloto:
+#   python -m src.data.ingesta_propia --config configs/datasets/propio_piloto.yaml
+# Las rutas son relativas a la raíz del repositorio. TODAS las reglas de etiquetado están aquí,
+# no en el código (src/data/propio.py solo las aplica).
+fuente: propio
+sesion: piloto
+licencia: propia (titularidad por confirmar)
+dispositivo: iPhone 14   # texto libre (sin datos personales); si se deja vacío, la ingesta avisa
+
+fotos: data/raw/propio/piloto/piloto_jpg   # nombres <lechuga>_<estado>_<vista>.jpg
+hoja: data/raw/propio/hoja_captura_piloto.xlsx
+hoja_nombre: Captura
+# CSV opcional (utf-8) con columnas lechuga,estado,grupo,etiqueta y, opcional, vista (C/F/G/B;
+# vacía = todas las vistas). Gana sobre todas las reglas de abajo, también sobre la visibilidad.
+excepciones: null
+salida: data/processed/propio_piloto   # se regenera en cada ingesta
+
+# Clave interna -> cabecera de la hoja. Se comparan sin mayúsculas, tildes ni espacios de más.
+columnas:
+  lechuga: "Lechuga"
+  variedad: "Variedad"
+  estado: "Qué le has hecho (estado)"
+  hojas_danadas: "Hojas de fuera dañadas (nº total)"
+  hojas_amarillas: "Hojas amarillas o marrones (nº)"
+  se_ve_dano: "¿Se ve el daño en las fotos?"
+  notas: "Notas"
+
+# Prefijo del lechuga_id (LI-001, LB-002...) -> variedad.
+variedades:
+  LI: iceberg
+  LB: batavia
+
+# Letra de la vista en el nombre del archivo -> vista del esquema.
+vistas:
+  C: cenital
+  F: lateral_a
+  G: lateral_b
+  B: base
+
+# Conservación de cada lechuga (nevera o ambiente).
+conservacion:
+  LI-001: nevera
+  LI-002: ambiente
+  LB-001: nevera
+  LB-002: nevera
+
+# Código del estado (el del nombre del archivo) -> textos con que puede venir en la hoja.
+# Se comparan sin mayúsculas, tildes ni plurales ("Pocas hojas rasgada" = "pocas hojas
+# rasgadas"). La hoja también puede traer el código tal cual (5, 24h).
+estados:
+  "0": [tal como viene]
+  "1": [sin raíz con tallo]
+  "2": [corte malo]
+  "3": [corte bueno sin limpiar]
+  "4": [corte bueno y hojas malas quitadas]
+  "5": [pocas hojas rasgadas]
+  "6": [golpe]
+  "7": [muchas hojas dañadas]
+  "8": [pelada, pelada hojas de mas quitadas]
+  24h: [24h, 24 h, 24 horas, envejecimiento 24 h]
+  48h: [48h, 48 h, 48 horas, envejecimiento 48 h]
+
+# Estados de la serie temporal -> horas desde el corte. En metadata.csv llevan estado_seq 0.
+# Los demás estados llevan estado_seq = su código y horas_desde_corte vacío.
+serie:
+  24h: 24
+  48h: 48
+
+# Etiquetas del estado 0 (tal como viene) por variedad. En por_estado, "estado_0" remite aquí.
+estado_0:
+  iceberg:
+    corte: CUT_OK
+    recorte: TRIM_OK
+  batavia:
+    corte: ROOT_REMAINS
+    recorte: UNDER_TRIMMED
+
+# Grupo -> estado -> etiqueta. Cada grupo lista todos los estados.
+por_estado:
+  corte:
+    "0": estado_0
+    "1": STEM_TOO_LONG
+    "2": UNCLEAN_CUT
+    "3": CUT_OK
+    "4": CUT_OK
+    "5": CUT_OK
+    "6": CUT_OK
+    "7": CUT_OK
+    "8": CUT_OK
+    24h: estado_0
+    48h: estado_0
+  recorte:
+    "0": estado_0
+    "1": estado_0   # tocar la raíz o el tallo no toca las hojas
+    "2": estado_0
+    "3": UNDER_TRIMMED
+    "4": TRIM_OK
+    "5": TRIM_OK
+    "6": TRIM_OK
+    "7": TRIM_OK
+    "8": OVER_TRIMMED
+    24h: estado_0
+    48h: estado_0
+  # PROVISIONAL en 6, 7 y 8: el golpe persiste y solo cabe un valor por grupo (la multietiqueta
+  # está pendiente del tutor).
+  daño_fisico:
+    "0": PHYSICAL_OK
+    "1": PHYSICAL_OK
+    "2": PHYSICAL_OK
+    "3": PHYSICAL_OK
+    "4": PHYSICAL_OK
+    "5": TORN_LEAF
+    "6": BRUISE_CRUSH
+    "7": BRUISE_CRUSH
+    "8": BRUISE_CRUSH
+    24h: PHYSICAL_OK
+    48h: PHYSICAL_OK
+  daño_bio:
+    "0": BIO_OK
+    "1": BIO_OK
+    "2": BIO_OK
+    "3": BIO_OK
+    "4": BIO_OK
+    "5": BIO_OK
+    "6": BIO_OK
+    "7": BIO_OK
+    "8": BIO_OK
+    24h: BIO_OK
+    48h: BIO_OK
+
+# Grupos que salen de un recuento de la hoja.
+# PROVISIONAL (criterio USDA, pendiente de validar con el tutor): de 0 a leve_desde-1 -> OK,
+# de leve_desde a grave_desde-1 -> LIGHT, grave_desde o más -> MAJOR. Con 3 y 5: 0-2 OK,
+# 3-4 LIGHT, 5 o más MAJOR. Recuento vacío (desconocido) -> NO_VISIBLE en todas las vistas y aviso.
+# Formas admitidas: entero, "~10" (= 10), "1-2" (= 2, el máximo) y las palabras de abajo.
+recuentos:
+  leve_desde: 3
+  grave_desde: 5
+  palabras:
+    todas: 5   # "Todas" = 5 o más
+  grupos:
+    hojas_ext:
+      columna: hojas_danadas
+      etiquetas: [OUTER_LEAVES_OK, OUTER_DAMAGE_LIGHT, OUTER_DAMAGE_MAJOR]
+    color:
+      columna: hojas_amarillas
+      etiquetas: [COLOR_FRESH_OK, YELLOW_BROWN_LIGHT, YELLOW_BROWN_MAJOR]
+
+# Visibilidad (matriz grupo x vista): vistas en las que se ve cada grupo; en las demás, NO_VISIBLE.
+# En la base (B) también se ven las hojas de fuera, por eso recorte y hojas_ext la incluyen.
+visibilidad:
+  corte: [B]
+  recorte: [C, F, G, B]
+  hojas_ext: [C, F, G, B]
+  color: [C, F, G, B]
+  daño_fisico: [C, F, G]
+  daño_bio: [C, F, G, B]
+
+# "No" en la columna se_ve_dano: el grupo pasa a NO_VISIBLE en todas las vistas de ese estado,
+# salvo si su etiqueta es la de "sin defecto" (entonces no cambia y el informe lo anota).
+no_se_ve:
+  grupo: daño_fisico
+  sin_defecto: PHYSICAL_OK
