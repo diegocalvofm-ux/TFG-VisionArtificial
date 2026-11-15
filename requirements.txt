@@ -8,3 +8,4 @@ matplotlib
 pandas
 pyyaml
 psutil
+openpyxl  # lectura de la hoja de captura (.xlsx) de las fotos propias
