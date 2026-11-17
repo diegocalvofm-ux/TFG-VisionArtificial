@@ -1,0 +1,69 @@
+# Dataset de recortes de la etapa 2 (evaluar los seis grupos), versión 1.
+#   python -m src.data.etapa2 --config configs/datasets/etapa2_v1.yaml --comprobar   # recuentos, sin escribir
+#   python -m src.data.etapa2 --config configs/datasets/etapa2_v1.yaml
+# Rutas relativas a la raíz del repositorio. La salida se borra y se regenera en cada ejecución
+# (solo si contiene únicamente lo que escribe el script).
+salida: data/processed/etapa2_v1
+semilla: 42
+
+recorte:
+  margen: 0.10        # fracción del ancho y del alto de la caja que se añade a CADA lado
+  lado_px: 512        # lado mayor del recorte guardado (sin deformar)
+  calidad_jpeg: 95
+  min_lado_px: 32     # lado menor de la caja original por debajo de esto: se descarta (caja rara)
+
+duplicados:
+  umbral_hamming: 4             # distancia máxima entre dHash de 64 bits para contar como duplicado
+  giros_y_espejos: true         # compara también giros de 90° y espejos (8 huellas por recorte)
+  # Si un grupo de duplicados cruza particiones o fuentes, se queda solo la copia de la partición
+  # con más prioridad (evaluación primero) y, a igualdad, la de la fuente que va antes en 'fuentes'.
+  prioridad_particiones: [test, valid, train]
+
+# El orden de las fuentes es también su prioridad ante un duplicado entre fuentes.
+fuentes:
+  propio:
+    tipo: propio
+    imagenes: data/processed/propio_piloto   # salida de src.data.ingesta_propia
+    metadata: data/metadata.csv               # las seis etiquetas se copian de aquí
+    sesion: piloto
+    detector:                                 # caja = la de mayor confianza; sin detección, imagen entera
+      pesos: runs/exp002-etapa1-rfdert-n/pesos/checkpoint_best_total.pth
+      umbral: 0.5
+      dispositivo: cpu
+    control_lado_px: 1024   # lado mayor de las imágenes de control (solo para revisarlas a ojo)
+
+  yssp:               # zip y licencia: configs/datasets/yssp.yaml
+    tipo: coco
+    grupo: daño_bio   # las clases se traducen a este grupo; los otros cinco quedan en NO_VISIBLE
+    clases:
+      healthy: BIO_OK
+      Bacterial: DISEASE_VISIBLE
+      Downy_mildew: DISEASE_VISIBLE
+      "Lettuce - Anthracnose": DISEASE_VISIBLE
+      Powdery_mildew: DISEASE_VISIBLE
+      Septoria_Blight: DISEASE_VISIBLE
+      lettuce mosaic virus: DISEASE_VISIBLE
+    # null = sin tope; un entero = máximo de recortes BIO_OK en cada partición;
+    # o por partición: {train: n, valid: n, test: n}. Se fija tras ver los recuentos de --comprobar.
+    tope_bio_ok: null
+    reparto: null     # null = las particiones del ZIP (las copias entre ellas las quita 'duplicados')
+
+  phs:                # zip y licencia: configs/datasets/phs.yaml
+    tipo: coco
+    grupo: daño_bio
+    clases:           # cajas de estado: una por imagen
+      health: BIO_OK
+      downy_mildew: DISEASE_VISIBLE
+      sclerotinia_rot: ROT_DECAY
+    fases:            # cajas de fase sobre la misma planta: no son etiqueta
+      growing: incluir
+      raising_seeding: excluir   # plántulas: se excluye la imagen entera
+    una_caja_de_estado: true     # avisa y salta las imágenes sin exactamente una caja de estado
+    tope_bio_ok: null
+    # Reparto propio por el id del nombre (p. ej. 6432e, b05): el ZIP tiene 29 ids y los 29 están
+    # en train, valid y test a la vez. Cada id junta cientos de fotos de varias fechas (camas o
+    # cámaras, no plantas sueltas), así que se reparte por id: un id, una partición. Los ids con
+    # defecto y los sanos se reparten por separado para que cada partición tenga de los dos.
+    reparto:
+      grupo_regex: 'V006_77_(?:\d+_){6}([0-9a-z]+)_\d{8}_'
+      fracciones: {train: 0.70, valid: 0.15, test: 0.15}   # PROVISIONAL; en número de ids

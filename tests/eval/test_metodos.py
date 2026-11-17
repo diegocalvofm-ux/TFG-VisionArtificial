@@ -9,7 +9,14 @@ import numpy as np
 import pytest
 
 from src.config import load_config
-from src.eval.metodos import crear_fabricas, crear_linea_base, crear_owlvit, crear_rfdetr
+from src.eval.metodos import (
+    cargar_rfdetr,
+    crear_fabricas,
+    crear_linea_base,
+    crear_owlvit,
+    crear_rfdetr,
+    predictor_rfdetr,
+)
 from src.pipeline.detectors.owlvit import Cargado
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -172,6 +179,23 @@ def test_rfdetr_pesos_inexistentes_sin_ruta_absoluta(config_real, tmp_path):
     mensaje = str(error.value)
     assert config_real.rfdetr_pesos in mensaje
     assert str(tmp_path) not in mensaje  # el repositorio es público: ruta relativa
+
+
+def test_predictor_rfdetr_se_puede_usar_sin_la_configuracion_de_la_evaluacion():
+    modelo = _ModeloRFDETRFalso([[0, 0, 5, 5], [10.4, 10.6, 20, 20]], [0.6, 0.9])
+    predecir = predictor_rfdetr(modelo, 0.5)
+    imagen = np.zeros((30, 40, 3), dtype=np.uint8)
+    imagen[:, :] = (1, 2, 3)  # BGR
+
+    detecciones = predecir(imagen)
+
+    assert modelo.llamadas[0]["threshold"] == 0.5
+    assert tuple(modelo.llamadas[0]["imagen"][0, 0]) == (3, 2, 1)  # RGB
+    assert [(d.box, d.score) for d in detecciones] == [((10, 11, 20, 20), 0.9), ((0, 0, 5, 5), 0.6)]
+
+
+def test_cargar_rfdetr_es_publica():
+    assert callable(cargar_rfdetr)
 
 
 # --- Línea base -------------------------------------------------------------------------

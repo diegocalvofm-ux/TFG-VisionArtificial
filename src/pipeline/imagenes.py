@@ -13,6 +13,27 @@ import numpy as np
 EXTENSIONES = frozenset({".jpg", ".jpeg", ".png", ".webp", ".bmp"})
 
 
+def decodificar_imagen(datos: bytes | np.ndarray, nombre: str) -> np.ndarray:
+    """Convierte los bytes de un archivo de imagen en un array BGR de tres canales.
+
+    En lenguaje llano: es lo que hace ``leer_imagen`` una vez tiene el archivo en memoria. Sirve
+    también para imágenes que no están en disco, como las que se leen de dentro de un ZIP sin
+    extraerlo. ``nombre`` solo se usa en los mensajes de error.
+
+    Error: ``ValueError`` si los bytes están vacíos o no son una imagen válida.
+    """
+    datos = np.frombuffer(datos, dtype=np.uint8) if isinstance(datos, bytes) else datos
+    if datos.size == 0:
+        raise ValueError(f"el archivo está vacío: {nombre}")
+    try:
+        imagen = cv2.imdecode(datos, cv2.IMREAD_COLOR)
+    except cv2.error as error:
+        raise ValueError(f"no se puede decodificar {nombre}: {error}") from error
+    if imagen is None:
+        raise ValueError(f"no es una imagen válida: {nombre}")
+    return imagen
+
+
 def leer_imagen(ruta: str | Path) -> np.ndarray:
     """Lee una imagen y la devuelve como array BGR de tres canales (alto, ancho, 3).
 
@@ -24,29 +45,23 @@ def leer_imagen(ruta: str | Path) -> np.ndarray:
     archivo está vacío o no es una imagen válida.
     """
     ruta = Path(ruta)
-    datos = np.fromfile(ruta, dtype=np.uint8)
-    if datos.size == 0:
-        raise ValueError(f"el archivo está vacío: {ruta.name}")
-    try:
-        imagen = cv2.imdecode(datos, cv2.IMREAD_COLOR)
-    except cv2.error as error:
-        raise ValueError(f"no se puede decodificar {ruta.name}: {error}") from error
-    if imagen is None:
-        raise ValueError(f"no es una imagen válida: {ruta.name}")
-    return imagen
+    return decodificar_imagen(np.fromfile(ruta, dtype=np.uint8), ruta.name)
 
 
-def guardar_imagen(ruta: str | Path, imagen: np.ndarray) -> None:
+def guardar_imagen(ruta: str | Path, imagen: np.ndarray, calidad_jpeg: int | None = None) -> None:
     """Guarda una imagen; el formato lo decide la extensión de la ruta (.jpg, .png...).
 
     En lenguaje llano: OpenCV convierte la imagen a los bytes del formato elegido en
     memoria y esos bytes se escriben en el archivo con numpy, sin pasar la ruta a OpenCV.
+    ``calidad_jpeg`` (de 0 a 100) fija la calidad de un JPEG; si no se da, se usa la de
+    OpenCV (95). OpenCV no escribe EXIF ni otros metadatos.
 
     Error: ``ValueError`` si la extensión no corresponde a ningún formato conocido.
     """
     ruta = Path(ruta)
+    parametros = [] if calidad_jpeg is None else [cv2.IMWRITE_JPEG_QUALITY, int(calidad_jpeg)]
     try:
-        correcto, datos = cv2.imencode(ruta.suffix, imagen)
+        correcto, datos = cv2.imencode(ruta.suffix, imagen, parametros)
     except cv2.error as error:
         raise ValueError(f"no se puede codificar con la extensión '{ruta.suffix}'") from error
     if not correcto:

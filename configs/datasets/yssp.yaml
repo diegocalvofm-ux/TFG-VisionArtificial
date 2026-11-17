@@ -1,0 +1,11 @@
+# Fuente pública: enfermedades de la lechuga (Roboflow, formato COCO con cajas).
+# Solo describe la fuente: el mapeo de clases de la etapa 2 está en etapa2_v1.yaml.
+# Licencia tomada del campo "licenses" del JSON del ZIP; fecha de descarga = la de exportación
+# del README.roboflow.txt del ZIP. Autor y URL: dados por el autor del TFG.
+fuente: yssp
+nombre: disease lettuce
+autor: yssp
+url: https://universe.roboflow.com/yssp/disease-lettuce-h69zb
+licencia: CC BY 4.0
+fecha_descarga: "2026-11-16"
+zip: data/raw/lettuce_disease_yssp_CCBY.zip   # relativa a la raíz del repositorio

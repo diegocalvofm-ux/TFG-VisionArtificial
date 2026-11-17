@@ -1,7 +1,12 @@
 # Fuente pública: lechugas ("krop") y su corazón ("kern") en fotogramas de vídeo (Roboflow, COCO).
-# Licencia tomada del campo "licenses" del JSON del ZIP.
+# Licencia tomada del campo "licenses" del JSON del ZIP; fecha de descarga = la de exportación del
+# README.roboflow.txt del ZIP. Autor y URL: PENDIENTE (null hasta que se confirmen).
 fuente: svodk
+nombre: lettuce segmentation
+autor: null
+url: null
 licencia: MIT
+fecha_descarga: "2026-10-27"
 zip: data/raw/lettuce_segmentation_svodk_MIT.zip   # relativa a la raíz del repositorio
 
 # clase del ZIP -> destino (lechuga | kern | tipburn | ignorar)

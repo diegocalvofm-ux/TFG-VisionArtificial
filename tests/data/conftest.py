@@ -382,3 +382,230 @@ def ingesta_sintetica(tmp_path):
         return ruta_yaml
 
     return fabrica
+
+
+# --- Etapa 2: ZIP COCO con cajas, fotos propias y YAML del dataset de recortes ------------
+
+
+def _imagen_suave(semilla: int, ancho: int = 96, alto: int = 72):
+    """Imagen sintética con manchas de color al azar ampliadas (distinta para cada semilla).
+
+    En lenguaje llano: una rejilla de 8x6 colores al azar ampliada con interpolación cúbica.
+    Tiene estructura a gran escala, así su dHash es estable al comprimir en JPEG y dos semillas
+    distintas dan huellas muy distintas (no salen duplicados por casualidad). Nunca es real.
+    """
+    import cv2
+    import numpy as np
+
+    pequena = np.random.default_rng(semilla).integers(0, 256, (6, 8, 3), dtype=np.uint8)
+    return cv2.resize(pequena, (ancho, alto), interpolation=cv2.INTER_CUBIC)
+
+
+def _escribir_zip_cajas(ruta: Path, carpetas: dict, categorias: tuple[str, ...]) -> Path:
+    """Escribe un ZIP COCO (estilo Roboflow) con cajas en lugar de polígonos.
+
+    ``carpetas`` es ``{carpeta: [imagen, ...]}`` y cada imagen un diccionario con ``nombre``,
+    ``semilla``, ``cajas`` (lista de ``(clase, [x, y, w, h])``) y, opcionales, ``ancho``,
+    ``alto`` (96x72 por defecto) y ``espejo`` (guarda la imagen volteada en horizontal). La misma
+    semilla da la misma imagen: así se fabrican duplicados. ``categorias`` se numera desde 0.
+    """
+    import json
+    import zipfile
+
+    import cv2
+    import numpy as np
+
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(ruta, "w") as zf:
+        for carpeta, imagenes in carpetas.items():
+            coco = {
+                "info": {},
+                "licenses": [],
+                "categories": [{"id": i, "name": n} for i, n in enumerate(categorias)],
+                "images": [],
+                "annotations": [],
+            }
+            for i, imagen in enumerate(imagenes):
+                ancho, alto = imagen.get("ancho", 96), imagen.get("alto", 72)
+                pixeles = _imagen_suave(imagen["semilla"], ancho, alto)
+                if imagen.get("espejo"):
+                    pixeles = np.ascontiguousarray(np.fliplr(pixeles))
+                correcto, datos = cv2.imencode(".jpg", pixeles)
+                assert correcto
+                zf.writestr(f"{carpeta}/{imagen['nombre']}", datos.tobytes())
+                coco["images"].append(
+                    {"id": i, "file_name": imagen["nombre"], "width": ancho, "height": alto}
+                )
+                for clase, caja in imagen.get("cajas", []):
+                    coco["annotations"].append(
+                        {
+                            "id": len(coco["annotations"]),
+                            "image_id": i,
+                            "category_id": categorias.index(clase),
+                            "bbox": list(caja),
+                            "area": caja[2] * caja[3],
+                            "segmentation": [],
+                            "iscrowd": 0,
+                        }
+                    )
+            zf.writestr(f"{carpeta}/_annotations.coco.json", json.dumps(coco, ensure_ascii=False))
+    return ruta
+
+
+@pytest.fixture
+def imagen_suave():
+    """Devuelve la función que fabrica una imagen sintética suave (ver ``_imagen_suave``)."""
+    return _imagen_suave
+
+
+@pytest.fixture
+def fuente_etapa2(tmp_path):
+    """Devuelve una función que crea el ZIP y el YAML descriptor de una fuente pública.
+
+    Uso: ``fuente_etapa2("yssp", carpetas, categorias)``. El ZIP va a
+    ``<tmp>/data/raw/<fuente>.zip`` y el YAML a ``<tmp>/configs/datasets/<fuente>.yaml`` (con
+    ``fuente``, ``licencia`` y ``zip``, como los reales). Devuelve la ruta del ZIP.
+    """
+    import yaml
+
+    def fabrica(nombre: str, carpetas: dict, categorias: tuple[str, ...], licencia: str = "MIT"):
+        ruta_zip = tmp_path / "data" / "raw" / f"{nombre}.zip"
+        _escribir_zip_cajas(ruta_zip, carpetas, categorias)
+        descriptor = {
+            "fuente": nombre,
+            "nombre": f"dataset {nombre}",
+            "licencia": licencia,
+            "zip": f"data/raw/{nombre}.zip",
+            "autor": None,
+            "url": None,
+            "fecha_descarga": "2026-11-16",
+        }
+        ruta_yaml = tmp_path / "configs" / "datasets" / f"{nombre}.yaml"
+        ruta_yaml.parent.mkdir(parents=True, exist_ok=True)
+        ruta_yaml.write_text(yaml.safe_dump(descriptor, allow_unicode=True), encoding="utf-8")
+        return ruta_zip
+
+    return fabrica
+
+
+# Etiquetas de una foto propia de ejemplo: con defectos, para comprobar que se copian tal cual.
+ETIQUETAS_PROPIAS = {
+    "corte": "NO_VISIBLE",
+    "recorte": "TRIM_OK",
+    "hojas_ext": "OUTER_DAMAGE_LIGHT",
+    "color": "YELLOW_BROWN_LIGHT",
+    "daño_fisico": "TORN_LEAF",
+    "daño_bio": "BIO_OK",
+}
+_VISTA_DE_LETRA = {"C": "cenital", "F": "lateral_a", "G": "lateral_b", "B": "base"}
+
+
+@pytest.fixture
+def etiquetas_propias():
+    """Etiquetas que llevan en metadata.csv las fotos de ``propio_etapa2``."""
+    return dict(ETIQUETAS_PROPIAS)
+
+
+@pytest.fixture
+def propio_etapa2(tmp_path):
+    """Devuelve una función que prepara fotos propias ya ingeridas y su ``metadata.csv``.
+
+    Uso: ``bloque = propio_etapa2(["LB-001_0_C", "LB-001_0_F"])``. Escribe cada foto en
+    ``<tmp>/data/processed/propio_piloto/<image_id>.jpg`` (más un ``informe.json`` que debe
+    ignorarse), las filas en ``<tmp>/data/metadata.csv`` (más una fila de otra fuente y otra de
+    otra sesión, que no deben entrar) y unos pesos falsos en ``<tmp>/runs/pesos.pth``. Devuelve el
+    bloque ``propio`` del YAML de la etapa 2. ``sin_fila`` y ``sin_foto`` dejan una foto sin su
+    fila o una fila sin su foto.
+    """
+    import cv2
+    import pandas as pd
+
+    from src.data.schema import METADATA_COLUMNS
+
+    def fabrica(
+        image_ids: list[str],
+        *,
+        sin_fila: tuple[str, ...] = (),
+        sin_foto: tuple[str, ...] = (),
+        ancho: int = 160,
+        alto: int = 120,
+    ) -> dict:
+        carpeta = tmp_path / "data" / "processed" / "propio_piloto"
+        carpeta.mkdir(parents=True, exist_ok=True)
+        (carpeta / "informe.json").write_text("{}", encoding="utf-8")
+        filas = []
+        for n, image_id in enumerate(image_ids):
+            if image_id not in sin_foto:
+                correcto, datos = cv2.imencode(".jpg", _imagen_suave(100 + n, ancho, alto))
+                assert correcto
+                (carpeta / f"{image_id}.jpg").write_bytes(datos.tobytes())
+            if image_id in sin_fila:
+                continue
+            fila = dict.fromkeys(METADATA_COLUMNS, "")
+            fila.update(ETIQUETAS_PROPIAS)
+            fila.update(
+                image_id=image_id,
+                fuente="propio",
+                licencia="propia",
+                etiqueta_original="tal como viene",
+                lechuga_id=image_id.split("_")[0],
+                vista=_VISTA_DE_LETRA[image_id[-1]],
+                sesion="piloto",
+                salida_global="REVIEW",
+                archivo_original=f"{image_id}.jpg",
+            )
+            filas.append(fila)
+        extra = []
+        if filas:  # filas que no deben entrar: otra fuente y otra sesión de la misma fuente
+            extra = [
+                dict(filas[0], image_id="svodk_0001", fuente="svodk"),
+                dict(filas[0], image_id="LB-009_0_C", sesion="otra"),
+            ]
+        tabla = pd.DataFrame([*filas, *extra], columns=list(METADATA_COLUMNS))
+        tabla.to_csv(tmp_path / "data" / "metadata.csv", index=False, encoding="utf-8")
+        (tmp_path / "runs").mkdir(exist_ok=True)
+        (tmp_path / "runs" / "pesos.pth").write_bytes(b"pesos falsos")
+        return {
+            "tipo": "propio",
+            "imagenes": "data/processed/propio_piloto",
+            "metadata": "data/metadata.csv",
+            "sesion": "piloto",
+            "detector": {"pesos": "runs/pesos.pth", "umbral": 0.5, "dispositivo": "cpu"},
+            "control_lado_px": 64,
+        }
+
+    return fabrica
+
+
+@pytest.fixture
+def etapa2_sintetica(tmp_path):
+    """Devuelve una función que escribe ``<tmp>/configs/datasets/etapa2_v1.yaml``.
+
+    Uso: ``ruta = etapa2_sintetica({"yssp": bloque})``. ``recorte`` y ``duplicados`` sustituyen
+    claves de esas secciones (``min_lado_px`` es 8 por defecto: las imágenes de prueba son
+    pequeñas); ``cambios`` sustituye claves de primer nivel.
+    """
+    import yaml
+
+    def fabrica(fuentes: dict, *, recorte=None, duplicados=None, **cambios) -> Path:
+        config = {
+            "salida": "data/processed/etapa2_v1",
+            "semilla": 42,
+            "recorte": {"margen": 0.10, "lado_px": 512, "calidad_jpeg": 95, "min_lado_px": 8},
+            "duplicados": {
+                "umbral_hamming": 4,
+                "giros_y_espejos": True,
+                "prioridad_particiones": ["test", "valid", "train"],
+            },
+            "fuentes": fuentes,
+        }
+        config["recorte"].update(recorte or {})
+        config["duplicados"].update(duplicados or {})
+        config.update(cambios)
+        ruta = tmp_path / "configs" / "datasets" / "etapa2_v1.yaml"
+        ruta.parent.mkdir(parents=True, exist_ok=True)
+        texto = yaml.safe_dump(config, allow_unicode=True, sort_keys=False)
+        ruta.write_text(texto, encoding="utf-8")
+        return ruta
+
+    return fabrica

@@ -1,0 +1,12 @@
+# Fuente pública: enfermedades y fases de cultivo de la lechuga (Roboflow, formato COCO con cajas).
+# Solo describe la fuente: el mapeo de clases y el reparto de la etapa 2 están en etapa2_v1.yaml.
+# Licencia tomada del campo "licenses" del JSON del ZIP; fecha de descarga = la de exportación
+# del README.roboflow.txt del ZIP. Autor y URL: dados por el autor del TFG.
+# El ZIP ocupa 13,7 GB: se lee sin descomprimirlo.
+fuente: phs
+nombre: lettuce_disease
+autor: PHS
+url: https://universe.roboflow.com/phs/lettuce_disease
+licencia: MIT
+fecha_descarga: "2026-11-16"
+zip: data/raw/lettuce_disease_phs_MIT.zip   # relativa a la raíz del repositorio
