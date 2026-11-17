@@ -1,0 +1,54 @@
+# Entrenamiento del clasificador de la etapa 2 (seis grupos de calidad) con el dataset etapa2_v1.
+#   python -m src.train.etapa2 --config configs/train/etapa2_effb0.yaml --exp-id <id> [--smoke]
+# Todos los parámetros salen de aquí (el código no lleva valores fijos). Valores de partida: se
+# ajustan tras el primer --smoke (tiempo por época y memoria de la GPU).
+# PROVISIONAL (decisiones del tutor): una sola etiqueta por grupo (softmax) mientras no se decida
+# la multietiqueta, y YELLOW_BROWN_LIGHT / YELLOW_BROWN_MAJOR como clases independientes.
+
+modelo:
+  arquitectura: efficientnet_b0  # de timm; pesos timm/efficientnet_b0.ra_in1k (ImageNet-1k, Apache-2.0)
+  preentrenado: true             # false solo para pruebas: entrenaría desde cero
+  resolucion: 320                # lado de la entrada cuadrada (el recorte se encaja sin deformar)
+  dropout: 0.2                   # antes de la capa lineal de cada grupo
+
+entrenamiento:
+  epocas: 30
+  batch_size: 32                 # prudente para los 16 GB de una T4 con fp16 a 320 px
+  lr_extractor: 2.0e-4           # tasa del extractor preentrenado (se ajusta, no se reaprende)
+  lr_cabezas: 1.0e-3             # tasa de las cabezas, que empiezan desde cero
+  decaimiento_pesos: 1.0e-2      # weight decay de AdamW
+  epocas_calentamiento: 1        # subida lineal de la tasa al principio
+  factor_lr_final: 0.01          # el coseno baja hasta tasa x 0,01
+  precision_mixta: true          # fp16 solo en GPU; en CPU siempre fp32
+  num_workers: 2                 # Colab tiene 2 CPU
+  dispositivo: auto              # cuda si hay GPU, si no cpu
+
+perdida:
+  pesos_clase: inv_raiz          # ninguno | inv_raiz (1/raíz de la frecuencia) | inverso (1/frecuencia)
+
+aumentos:                        # solo en train; nunca cambios de tono ni de saturación (grupo color)
+  escala_recorte: [0.9, 1.0]     # fracción del área que conserva el recorte: no deja fuera el tallo (vista base)
+  proporcion_recorte: [1.0, 1.0] # sin deformar: un golpe aplana la lechuga y no se simula con aumentos
+  volteo_horizontal: true
+  volteo_vertical: true
+  giros_90: true
+  rotacion_grados: 10            # rotación pequeña, entre -10 y +10 grados
+  brillo: 0.0                    # 0 = desactivado; como mucho 0.2
+  contraste: 0.0                 # 0 = desactivado; como mucho 0.2
+
+semilla: 42
+
+datos:
+  dataset: data/processed/etapa2_v1   # relativa a la raíz; la genera src.data.etapa2 (v2-01)
+  fuente_propia: propio               # la fuente de las fotos propias en recortes.csv
+  sobremuestreo_propio: 5             # PROVISIONAL: cada recorte propio aparece 5 veces por época en train (nunca en valid ni test)
+  reparto_propio: null                # null = particiones de recortes.csv; o {train: 0.70, valid: 0.15, test: 0.15}
+                                      # para repartir de nuevo las filas propias por lechuga_id (cuando haya más lechugas)
+
+salida:
+  carpeta: runs                       # cada ejecución va a runs/<exp_id>/
+
+smoke:                                # --smoke: una prueba rápida de que todo funciona
+  epocas: 1
+  recortes_train: 64
+  recortes_eval: 64                   # en valid y en test
