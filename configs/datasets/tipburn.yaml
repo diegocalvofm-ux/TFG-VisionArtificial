@@ -1,10 +1,15 @@
 # Fuente pública: lechugas y quemadura de punta ("tipburn") (Roboflow, formato COCO).
-# Licencia tomada del campo "licenses" del JSON del ZIP.
+# Licencia tomada del campo "licenses" del JSON del ZIP; fecha de descarga = la de exportación del
+# README.roboflow.txt del ZIP. Autor y URL: PENDIENTE (null hasta que se confirmen).
 #
 # PENDIENTE: auditoría y filtro de las imágenes. Por eso NO está en etapa1_v1.yaml todavía;
 # este YAML se conserva para cuando se incluya.
 fuente: tipburn
+nombre: Lettuce_Segmentation
+autor: null
+url: null
 licencia: CC BY 4.0
+fecha_descarga: "2026-10-27"
 zip: data/raw/lettuce_segmentation_tipburn.zip   # relativa a la raíz del repositorio
 
 # clase del ZIP -> destino (lechuga | kern | tipburn | ignorar)

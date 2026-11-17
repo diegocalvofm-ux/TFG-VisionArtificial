@@ -89,12 +89,12 @@ def crear_owlvit(
     )
 
 
-def _cargar_rfdetr(ruta: Path, dispositivo: str):
+def cargar_rfdetr(ruta: Path, dispositivo: str):
     """Carga RF-DETR desde un checkpoint de entrenamiento (única función que importa rfdetr).
 
     ``RFDETR.from_checkpoint`` (rfdetr 1.11.2) deduce la clase (Nano, Small...) del propio
     checkpoint. El dispositivo guardado en él es el del entrenamiento, así que se pasa el de la
-    evaluación.
+    evaluación. También la usa el dataset de la etapa 2 para recortar las fotos propias.
     """
     try:
         from rfdetr import RFDETR
@@ -104,6 +104,28 @@ def _cargar_rfdetr(ruta: Path, dispositivo: str):
             "requirements-train.txt`"
         ) from error
     return RFDETR.from_checkpoint(str(ruta), device=dispositivo)
+
+
+def predictor_rfdetr(modelo, umbral: float) -> Callable[[np.ndarray], list[Detection]]:
+    """Función ``predecir(imagen_BGR)`` sobre un RF-DETR ya cargado.
+
+    En lenguaje llano: pasa la imagen a RGB (rfdetr la espera así; el pipeline usa BGR), llama a
+    ``predict`` con ``umbral`` y devuelve las cajas redondeadas a píxeles, de mayor a menor
+    puntuación (a igual puntuación, en el orden en que llegaron).
+    """
+
+    def predecir(imagen: np.ndarray) -> list[Detection]:
+        rgb = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
+        resultado = modelo.predict(rgb, threshold=umbral, include_source_image=False)
+        cajas = np.rint(np.asarray(resultado.xyxy, dtype=float).reshape(-1, 4)).astype(int)
+        puntuaciones = np.asarray(resultado.confidence, dtype=float).reshape(-1)
+        orden = np.argsort(-puntuaciones, kind="stable")
+        return [
+            Detection(box=tuple(int(v) for v in cajas[i]), score=float(puntuaciones[i]))
+            for i in orden
+        ]
+
+    return predecir
 
 
 def crear_rfdetr(
@@ -122,25 +144,14 @@ def crear_rfdetr(
     if cargador is None:
         if not ruta.is_file():
             raise FileNotFoundError(f"No existen los pesos de RF-DETR: {cfg.rfdetr_pesos}")
-        cargador = _cargar_rfdetr
+        cargador = cargar_rfdetr
     inicio = time.perf_counter()
     modelo = cargador(ruta, cfg.dispositivo)
     carga = time.perf_counter() - inicio
 
-    def predecir(imagen: np.ndarray) -> list[Detection]:
-        rgb = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
-        resultado = modelo.predict(rgb, threshold=cfg.rfdetr_umbral_ap, include_source_image=False)
-        cajas = np.rint(np.asarray(resultado.xyxy, dtype=float).reshape(-1, 4)).astype(int)
-        puntuaciones = np.asarray(resultado.confidence, dtype=float).reshape(-1)
-        orden = np.argsort(-puntuaciones, kind="stable")
-        return [
-            Detection(box=tuple(int(v) for v in cajas[i]), score=float(puntuaciones[i]))
-            for i in orden
-        ]
-
     return Metodo(
         tiene_confianza=True,
-        predecir=predecir,
+        predecir=predictor_rfdetr(modelo, cfg.rfdetr_umbral_ap),
         tiempo_carga_s=carga,
         umbral=cfg.rfdetr_umbral,
         umbral_ap=cfg.rfdetr_umbral_ap,

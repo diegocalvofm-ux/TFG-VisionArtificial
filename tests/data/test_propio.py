@@ -551,12 +551,14 @@ def test_orientacion_exif_se_aplica_y_se_quitan_los_metadatos(
 
 
 def test_filas_de_metadata(ingesta_sintetica, fila_hoja, tmp_path):
+    # El dispositivo lo fija la propia prueba: así no depende del que diga propio_piloto.yaml.
     ruta = ingesta_sintetica(
         [*_cuatro("LI-002", "0"), *_cuatro("LI-002", "24h")],
         [
             fila_hoja("LI-002", "Tal como viene"),
             fila_hoja("LI-002", "24 h", amarillas="1-2", notas="hojas algo blandas"),
         ],
+        cambios={"dispositivo": "Móvil de prueba"},
     )
 
     _ingerir(ruta, tmp_path)
@@ -578,7 +580,7 @@ def test_filas_de_metadata(ingesta_sintetica, fila_hoja, tmp_path):
     assert fila["temperatura_c"] == ""
     assert fila["intervencion"] == "24 h; notas: hojas algo blandas"
     assert fila["etiqueta_original"] == "24 h"
-    assert fila["dispositivo"] == "iPhone XX"
+    assert fila["dispositivo"] == "Móvil de prueba"
     assert fila["archivo_original"] == "LI-002_24h_C.jpg"
     assert fila["color"] == "COLOR_FRESH_OK"  # "1-2" cuenta como 2
     base = df.set_index("image_id").loc["LI-002_0_B"]

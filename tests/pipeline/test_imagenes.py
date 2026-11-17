@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pytest
 
-from src.pipeline.imagenes import EXTENSIONES, guardar_imagen, leer_imagen
+from src.pipeline.imagenes import EXTENSIONES, decodificar_imagen, guardar_imagen, leer_imagen
 
 
 def test_extensiones_admitidas():
@@ -65,3 +65,31 @@ def test_leer_imagen_ilegible_lanza_value_error(tmp_path, contenido):
 def test_leer_imagen_inexistente_lanza_os_error(tmp_path):
     with pytest.raises(OSError):
         leer_imagen(tmp_path / "no_existe.png")
+
+
+# --- Decodificar desde bytes y calidad del JPEG ---------------------------------------------
+
+
+def test_decodificar_imagen_desde_bytes(crear_imagen):
+    original = crear_imagen(30, 40)
+    correcto, datos = cv2.imencode(".png", original)
+    assert correcto
+
+    np.testing.assert_array_equal(decodificar_imagen(datos.tobytes(), "x.png"), original)
+
+
+@pytest.mark.parametrize("contenido", [b"esto no es una imagen", b""], ids=["corrupto", "vacio"])
+def test_decodificar_imagen_ilegible_nombra_el_archivo(contenido):
+    with pytest.raises(ValueError, match="train/mala.jpg"):
+        decodificar_imagen(contenido, "train/mala.jpg")
+
+
+def test_guardar_imagen_con_calidad_jpeg(tmp_path):
+    ruido = np.random.default_rng(0).integers(0, 256, (64, 64, 3), dtype=np.uint8)
+    baja, alta = tmp_path / "baja.jpg", tmp_path / "alta.jpg"
+
+    guardar_imagen(baja, ruido, calidad_jpeg=30)
+    guardar_imagen(alta, ruido, calidad_jpeg=95)
+
+    assert baja.stat().st_size < alta.stat().st_size
+    assert b"Exif" not in alta.read_bytes()  # OpenCV no escribe metadatos
